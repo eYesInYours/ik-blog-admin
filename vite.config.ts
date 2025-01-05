@@ -37,8 +37,8 @@ export default defineConfig(({ mode }) => {
       open: true,
       // 反向代理
       proxy: {
-        "/api/v1": {
-          target: "https://mock.mengxuegu.com/mock/63218b5fb4c53348ed2bc212",
+        "/api": {
+          target: "http://localhost:5000",
           // 是否为 WebSocket
           ws: false,
           // 是否允许跨域

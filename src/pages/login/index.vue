@@ -5,7 +5,7 @@ import { useSettingsStore } from "@/pinia/stores/settings"
 import { useUserStore } from "@/pinia/stores/user"
 import ThemeSwitch from "@@/components/ThemeSwitch/index.vue"
 import { Key, Loading, Lock, Picture, User } from "@element-plus/icons-vue"
-import { getLoginCodeApi, loginApi } from "./apis"
+import { getLoginCodeApi, loginApi, verifyLoginCodeApi } from "./apis"
 import Owl from "./components/Owl.vue"
 import { useFocus } from "./composables/useFocus"
 
@@ -28,15 +28,16 @@ const codeUrl = ref("")
 
 /** 登录表单数据 */
 const loginFormData: LoginRequestData = reactive({
-  username: "admin",
-  password: "12345678",
+  email: "eyesin_1206@163.com",
+  password: "jh159753",
   code: ""
 })
 
 /** 登录表单校验规则 */
 const loginFormRules: FormRules = {
-  username: [
-    { required: true, message: "请输入用户名", trigger: "blur" }
+  email: [
+    { required: true, message: "请输入邮箱", trigger: "blur" },
+    { type: "email", message: "请输入正确的邮箱格式", trigger: "blur" }
   ],
   password: [
     { required: true, message: "请输入密码", trigger: "blur" },
@@ -49,21 +50,23 @@ const loginFormRules: FormRules = {
 
 /** 登录 */
 function handleLogin() {
-  loginFormRef.value?.validate((valid) => {
+  loginFormRef.value?.validate(async (valid) => {
     if (!valid) {
       ElMessage.error("表单校验不通过")
       return
     }
     loading.value = true
-    loginApi(loginFormData).then(({ data }) => {
-      userStore.setToken(data.token)
+    try {
+      await verifyLoginCodeApi(loginFormData.code)
+      const res = await loginApi(loginFormData)
+      userStore.setToken(res.data.token)
       router.push("/")
-    }).catch(() => {
+    } catch (error: any) {
       createCode()
-      loginFormData.password = ""
-    }).finally(() => {
+      console.log(error)
+    } finally {
       loading.value = false
-    })
+    }
   })
 }
 
@@ -75,7 +78,7 @@ function createCode() {
   codeUrl.value = ""
   // 获取验证码图片
   getLoginCodeApi().then((res) => {
-    codeUrl.value = res.data
+    codeUrl.value = res.data.imageUrl
   })
 }
 
@@ -95,8 +98,8 @@ createCode()
         <el-form ref="loginFormRef" :model="loginFormData" :rules="loginFormRules" @keyup.enter="handleLogin">
           <el-form-item prop="username">
             <el-input
-              v-model.trim="loginFormData.username"
-              placeholder="用户名"
+              v-model.trim="loginFormData.email"
+              placeholder="邮箱"
               type="text"
               tabindex="1"
               :prefix-icon="User"

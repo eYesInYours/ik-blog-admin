@@ -52,6 +52,7 @@ function createInstance() {
     (error) => {
       // status 是 HTTP 状态码
       const status = get(error, "response.status")
+      console.log(error)
       switch (status) {
         case 400:
           error.message = error.response.data.message

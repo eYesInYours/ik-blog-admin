@@ -5,7 +5,7 @@ import { request } from "@/http/axios"
 /** 获取登录验证码 */
 export function getLoginCodeApi() {
   return request<ApiResponse<LoginCodeResponse>>({
-    url: "/auth/captcha",
+    url: "/captcha",
     method: "GET"
   })
 }
@@ -13,7 +13,7 @@ export function getLoginCodeApi() {
 /** 校验登录验证码 */
 export function verifyLoginCodeApi(code: string) {
   return request<ApiResponse<LoginCodeResponse>>({
-    url: "/auth/verify",
+    url: "/captcha/verify",
     method: "POST",
     data: { code }
   })

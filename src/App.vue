@@ -13,8 +13,8 @@ initTheme()
 // 初始化灰色模式和色弱模式
 initGreyAndColorWeakness()
 // 初始化通知
-initStarNotification()
-initStoreNotification()
+// initStarNotification()
+// initStoreNotification()
 </script>
 
 <template>

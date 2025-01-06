@@ -88,25 +88,26 @@ async function handleSave(status: "draft" | "published") {
 
   loading.value = true
   try {
+    // 如果有待上传的封面图文件，先上传图片
+    if (coverImageFile.value) {
+      const formData = new FormData()
+      formData.append("file", coverImageFile.value)
+      const { data } = await uploadImage(formData)
+      article.value.cover = data.file.url
+      // 清理临时文件
+      URL.revokeObjectURL(article.value.cover)
+      coverImageFile.value = null
+    }
+
     article.value.status = status
     article.value.content = valueHtml.value
-    console.log(article.value)
+    
     if (article.value._id) {
       await articleApi.update(article.value._id, article.value)
     } else {
-      // 发布文章时，将封面图文件上传到服务器
-      if (coverImageFile.value) {
-        // 如果大于2m，则压缩
-        if (coverImageFile.value.size > 2 * 1024 * 1024)
-          coverImageFile.value = await compressImage(coverImageFile.value)
-        const formData = new FormData()
-        formData.append("file", coverImageFile.value)
-        // 返回的数据类型是{data: {file: {url: string}}}，声明类型
-        const { data } = await uploadImage(formData)
-        article.value.cover = data.file.url
-      }
       await articleApi.create(article.value)
     }
+    
     ElMessage.success(status === "published" ? "发布成功" : "保存成功")
     router.push("/content/articles")
   } catch (error) {
@@ -116,17 +117,22 @@ async function handleSave(status: "draft" | "published") {
   }
 }
 
-// 上传封面图
+// 获取图片
 async function handleUploadCover(file: File) {
   try {
-    const formData = new FormData()
-    formData.append("image", file)
-    const { data } = await uploadImage(formData)
-    article.value.cover = data.file.url
-    coverImageFile.value = file
+    // 检查文件大小，如果大于2M则压缩
+    let processedFile = file
+    if (file.size > 2 * 1024 * 1024) {
+      processedFile = await compressImage(file)
+    }
+    
+    // 生成临时预览图片地址
+    const blobUrl = URL.createObjectURL(processedFile)
+    article.value.cover = blobUrl
+    coverImageFile.value = processedFile
     return false
   } catch (error) {
-    ElMessage.error("封面图上传失败")
+    ElMessage.error("封面图处理失败")
     return false
   }
 }

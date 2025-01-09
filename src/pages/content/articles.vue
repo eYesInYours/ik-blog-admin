@@ -37,6 +37,16 @@ function getStatusType(status: string): "success" | "warning" | "info" | "primar
   }
   return statusMap[status] || "info"
 }
+// 根据字数获取标签颜色
+function getTagsType(tag: string): "success" | "warning" | "info" | "primary" | "danger" {
+  if (tag.length > 5) {
+    return "danger"
+  } else if (tag.length > 3) {
+    return "warning"
+  } else {
+    return "success"
+  }
+}
 
 function getStatusText(status: string) {
   const statusMap: Record<string, string> = {
@@ -113,7 +123,7 @@ onMounted(() => {
 
     <!-- 文章列表 -->
     <el-table :data="articles" style="width: 100%">
-      <el-table-column prop="title" label="标题" min-width="200">
+      <el-table-column prop="title" label="标题" min-width="100">
         <template #default="{ row }">
           <div class="article-title">
             <el-image v-if="row.cover" :src="row.cover" class="cover-image" />
@@ -128,6 +138,14 @@ onMounted(() => {
           </el-tag>
         </template>
       </el-table-column>
+      <el-table-column prop="tags" label="标签" width="100">
+        <template #default="{ row }">
+          <el-tag v-for="tag in row.tags" :key="tag" :type="getTagsType(tag)" size="small">
+            {{ tag }}
+          </el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column prop="categoryName" label="分类" width="100" />
       <el-table-column prop="createdAt" label="发布时间" width="180" />
       <el-table-column label="数据统计" width="200">
         <template #default="{ row }">

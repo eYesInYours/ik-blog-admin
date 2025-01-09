@@ -75,9 +75,6 @@ async function handleAudit(comment: Comment, status: string) {
 // 删除评论
 async function handleDelete(comment: Comment) {
   try {
-    await ElMessageBox.confirm("确定要删除这条评论吗？", "警告", {
-      type: "warning"
-    })
     await commentApi.delete(comment._id)
     ElMessage.success("删除成功")
     fetchComments()
@@ -129,6 +126,14 @@ function getStatusText(status: string) {
 onMounted(() => {
   fetchComments()
 })
+
+function toOuterLink(target: any) {
+  if (target.title) {
+    window.open(`${import.meta.env.VITE_CLIENT_BASE_URL}/articles/${target._id}`, '_blank')
+  } else {
+    window.open(`${import.meta.env.VITE_CLIENT_BASE_URL}/diary`, '_blank')
+  }
+}
 </script>
 
 <template>
@@ -138,29 +143,15 @@ onMounted(() => {
       <el-form :inline="true" :model="queryParams">
         <el-form-item label="状态">
           <el-select v-model="queryParams.status" placeholder="选择状态">
-            <el-option
-              v-for="item in statusOptions"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value"
-            />
+            <el-option v-for="item in statusOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
         <el-form-item label="关键词">
-          <el-input
-            v-model="queryParams.keyword"
-            placeholder="搜索评论内容"
-            clearable
-          />
+          <el-input v-model="queryParams.keyword" placeholder="搜索评论内容" clearable />
         </el-form-item>
         <el-form-item label="评论时间">
-          <el-date-picker
-            v-model="queryParams.dateRange"
-            type="daterange"
-            range-separator="至"
-            start-placeholder="开始日期"
-            end-placeholder="结束日期"
-          />
+          <el-date-picker v-model="queryParams.dateRange" type="daterange" range-separator="至" start-placeholder="开始日期"
+            end-placeholder="结束日期" />
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="handleSearch">
@@ -171,43 +162,40 @@ onMounted(() => {
     </div>
 
     <!-- 评论列表 -->
-    <el-table
-      v-loading="loading"
-      :data="comments"
-      style="width: 100%"
-    >
+    <el-table v-loading="loading" :data="comments" style="width: 100%">
       <el-table-column label="评论者" width="200">
         <template #default="{ row }">
           <div class="commenter-info">
-            <el-avatar :size="32" :src="row.avatar" />
+            <el-avatar :size="32" :src="row.author.avatar" />
             <div class="commenter-detail">
               <div class="commenter-name">
-                {{ row.username }}
-              </div>
-              <div class="commenter-email">
-                {{ row.email }}
+                {{ row.author.username }}
               </div>
             </div>
           </div>
         </template>
       </el-table-column>
       <el-table-column prop="content" label="评论内容" min-width="300" />
-      <el-table-column prop="articleTitle" label="文章" min-width="200">
+      <el-table-column prop="articleTitle" label="LINK" min-width="200">
         <template #default="{ row }">
-          <el-link type="primary" :href="row.articleUrl" target="_blank">
-            {{ row.articleTitle }}
+          <el-link type="primary" @click="toOuterLink(row.target)" target="_blank">
+            {{ row.target?.title || row.target?.content.slice(0, 10) }}
           </el-link>
         </template>
       </el-table-column>
       <el-table-column label="统计" width="150">
         <template #default="{ row }">
           <div class="statistics">
-            <span><el-icon><ThumbsUp /></el-icon> {{ row.likes }}</span>
-            <span><el-icon><ChatLineRound /></el-icon> {{ row.replies }}</span>
+            <span><el-icon>
+                <ThumbsUp />
+              </el-icon> {{ row.likes }}</span>
+            <span><el-icon>
+                <ChatLineRound />
+              </el-icon> {{ row.replies }}</span>
           </div>
         </template>
       </el-table-column>
-      <el-table-column prop="createTime" label="评论时间" width="180" />
+      <el-table-column prop="createdAt" label="评论时间" width="180" />
       <el-table-column prop="status" label="状态" width="100">
         <template #default="{ row }">
           <el-tag :type="getStatusType(row.status)">
@@ -217,46 +205,22 @@ onMounted(() => {
       </el-table-column>
       <el-table-column label="操作" width="200" fixed="right">
         <template #default="{ row }">
-          <el-button-group>
-            <el-button
-              v-if="row.status === 'pending'"
-              size="small"
-              type="success"
-              @click="handleAudit(row, 'approved')"
-            >
-              通过
-            </el-button>
-            <el-button
-              v-if="row.status === 'pending'"
-              size="small"
-              type="warning"
-              @click="handleAudit(row, 'rejected')"
-            >
-              拒绝
-            </el-button>
-            <el-button
-              size="small"
-              type="danger"
-              @click="handleDelete(row)"
-            >
-              删除
-            </el-button>
-          </el-button-group>
+          <el-popconfirm title="确定要删除这条评论吗？" @confirm="handleDelete(row)">
+            <template #reference>
+              <el-button size="small" type="danger">
+                删除
+              </el-button>
+            </template>
+          </el-popconfirm>
         </template>
       </el-table-column>
     </el-table>
 
     <!-- 分页 -->
     <div class="pagination">
-      <el-pagination
-        v-model:current-page="currentPage"
-        v-model:page-size="pageSize"
-        :total="total"
-        :page-sizes="[10, 20, 50, 100]"
-        layout="total, sizes, prev, pager, next, jumper"
-        @size-change="handleSizeChange"
-        @current-change="handleCurrentChange"
-      />
+      <el-pagination v-model:current-page="currentPage" v-model:page-size="pageSize" :total="total"
+        :page-sizes="[10, 20, 50, 100]" layout="total, sizes, prev, pager, next, jumper" @size-change="handleSizeChange"
+        @current-change="handleCurrentChange" />
     </div>
   </div>
 </template>

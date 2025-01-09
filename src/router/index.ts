@@ -96,6 +96,14 @@ export const constantRoutes: RouteRecordRaw[] = [
         meta: {
           title: "分类管理"
         }
+      },
+      {
+        path: "diaries",
+        component: () => import("@/pages/content/diaries.vue"),
+        name: "Diaries",
+        meta: {
+          title: "朋友圈管理"
+        }
       }
     ]
   },

@@ -5,6 +5,7 @@ export interface Article {
   status: "draft" | "published" | "disabled" | "active"
   tags: string[]
   category?: string
+  categoryName?: string
   cover?: string
   summary?: string
   allowComment?: boolean

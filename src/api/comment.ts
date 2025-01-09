@@ -6,7 +6,7 @@ export const commentApi = {
   // 获取所有评论（管理）
   getList(params: CommentQueryParams) {
     return request<ApiResponse<CommentResponse>>({
-      url: "/comments",
+      url: "/comments/admin/all",
       method: "GET",
       params
     })
@@ -24,7 +24,7 @@ export const commentApi = {
   // 删除评论
   delete(id: string) {
     return request({
-      url: `/comments/admin/${id}`,
+      url: `/comments/${id}`,
       method: "DELETE"
     })
   },

@@ -9,6 +9,7 @@ export interface Category {
   articleCount: number
   createdAt: string
   updatedAt: string
+  children?: Category[]
 }
 
 export interface CategoryQueryParams {

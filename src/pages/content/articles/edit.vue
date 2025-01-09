@@ -45,7 +45,8 @@ const article = ref<Partial<Article>>({
   title: "",
   content: "",
   tags: [],
-  category: "",
+  category: "", // id
+  categoryName: "", // name
   status: "draft",
   allowComment: true,
   cover: "",
@@ -79,6 +80,25 @@ async function fetchArticle(id: string) {
   }
 }
 
+// 递归查找分类路径
+function findCategoryPath(categories: any[], targetId: string): string | null {
+  for (const category of categories) {
+    // 检查当前分类
+    if (category._id === targetId) {
+      return category.name
+    }
+
+    // 检查子分类
+    if (category.children?.length) {
+      const childPath = findCategoryPath(category.children, targetId)
+      if (childPath) {
+        return `${category.name} / ${childPath}`
+      }
+    }
+  }
+  return null
+}
+
 // 发布文章
 async function handleSave(status: "draft" | "published") {
   if (!article.value.title?.trim()) {
@@ -88,6 +108,14 @@ async function handleSave(status: "draft" | "published") {
 
   loading.value = true
   try {
+    // 查找完整分类路径
+    if (article.value.category) {
+      const categoryPath = findCategoryPath(categories.value, article.value.category)
+      if (categoryPath) {
+        article.value.categoryName = categoryPath
+      }
+    }
+
     // 如果有待上传的封面图文件，先上传图片
     if (coverImageFile.value) {
       const formData = new FormData()
@@ -101,13 +129,13 @@ async function handleSave(status: "draft" | "published") {
 
     article.value.status = status
     article.value.content = valueHtml.value
-    
+
     if (article.value._id) {
       await articleApi.update(article.value._id, article.value)
     } else {
       await articleApi.create(article.value)
     }
-    
+
     ElMessage.success(status === "published" ? "发布成功" : "保存成功")
     router.push("/content/articles")
   } catch (error) {
@@ -125,7 +153,7 @@ async function handleUploadCover(file: File) {
     if (file.size > 2 * 1024 * 1024) {
       processedFile = await compressImage(file)
     }
-    
+
     // 生成临时预览图片地址
     const blobUrl = URL.createObjectURL(processedFile)
     article.value.cover = blobUrl
@@ -164,11 +192,7 @@ onBeforeUnmount(() => {
         <!-- <el-button @click="handleSave('draft')">
           保存草稿
         </el-button> -->
-        <el-button
-          type="primary"
-          :loading="loading"
-          @click="handleSave('published')"
-        >
+        <el-button type="primary" :loading="loading" @click="handleSave('published')">
           {{ article._id ? "更新文章" : "发布文章" }}
         </el-button>
       </div>
@@ -177,28 +201,14 @@ onBeforeUnmount(() => {
     <div class="main">
       <!-- 左侧编辑区 -->
       <div class="editor-container">
-        <el-input
-          v-model="article.title"
-          placeholder="请输入文章标题"
-          class="title-input"
-          size="large"
-          clearable
-        />
+        <el-input v-model="article.title" placeholder="请输入文章标题" class="title-input" size="large" clearable />
         <div class="editor-wrapper">
           <!-- 工具栏 -->
-          <Toolbar
-            :editor="editorRef"
-            :default-config="toolbarConfig"
-            class="toolbar"
-          />
+          <Toolbar :editor="editorRef" :default-config="toolbarConfig" class="toolbar" />
           <!-- 编辑区 -->
           <div class="edit-area">
-            <Editor
-              v-model="valueHtml"
-              :default-config="editorConfig"
-              @on-created="editorRef = $event"
-              class="editor"
-            />
+            <Editor v-model="valueHtml" :default-config="editorConfig" @on-created="editorRef = $event"
+              class="editor" />
           </div>
         </div>
       </div>
@@ -214,38 +224,18 @@ onBeforeUnmount(() => {
 
           <el-form label-position="top">
             <el-form-item label="分类">
-              <el-tree-select
-                v-model="article.category"
-                :data="categories"
-                node-key="_id"
-                :props="{ label: 'name' }"
-                clearable
-                placeholder="请选择分类"
-              />
+              <el-tree-select v-model="article.category" :data="categories" node-key="_id" :props="{ label: 'name' }"
+                clearable placeholder="请选择分类" />
             </el-form-item>
 
             <el-form-item label="标签">
-              <el-select
-                v-model="article.tags"
-                multiple
-                filterable
-                allow-create
-                placeholder="请选择或输入标签"
-              />
+              <el-select v-model="article.tags" multiple filterable allow-create placeholder="请选择或输入标签" />
             </el-form-item>
 
             <el-form-item label="封面图">
-              <el-upload
-                class="cover-uploader"
-                :show-file-list="false"
-                accept="image/*"
-                :before-upload="handleUploadCover"
-              >
-                <el-image
-                  v-if="article.cover"
-                  :src="article.cover"
-                  class="cover-image"
-                />
+              <el-upload class="cover-uploader" :show-file-list="false" accept="image/*"
+                :before-upload="handleUploadCover">
+                <el-image v-if="article.cover" :src="article.cover" class="cover-image" />
                 <el-icon v-else class="upload-icon">
                   <Plus />
                 </el-icon>
@@ -253,20 +243,11 @@ onBeforeUnmount(() => {
             </el-form-item>
 
             <el-form-item label="文章摘要">
-              <el-input
-                v-model="article.summary"
-                type="textarea"
-                :rows="4"
-                placeholder="请输入文章摘要"
-              />
+              <el-input v-model="article.summary" type="textarea" :rows="4" placeholder="请输入文章摘要" />
             </el-form-item>
 
             <el-form-item>
-              <el-switch
-                v-model="article.allowComment"
-                active-text="允许评论"
-                inactive-text="禁止评论"
-              />
+              <el-switch v-model="article.allowComment" active-text="允许评论" inactive-text="禁止评论" />
             </el-form-item>
           </el-form>
         </el-card>

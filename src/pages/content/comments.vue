@@ -46,6 +46,7 @@ async function fetchComments() {
     comments.value = data.comments
     total.value = data.pagination.total
   } catch (error) {
+    console.log(error)
     ElMessage.error("获取评论列表失败")
   } finally {
     loading.value = false

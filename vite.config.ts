@@ -1,6 +1,7 @@
 /// <reference types="vitest/config" />
 
-import { resolve } from "node:path"
+import { fileURLToPath } from 'node:url'
+import { dirname, resolve } from 'node:path'
 import vue from "@vitejs/plugin-vue"
 import vueJsx from "@vitejs/plugin-vue-jsx"
 import UnoCSS from "unocss/vite"
@@ -10,6 +11,10 @@ import { ElementPlusResolver } from "unplugin-vue-components/resolvers"
 import Components from "unplugin-vue-components/vite"
 import { defineConfig, loadEnv } from "vite"
 import svgLoader from "vite-svg-loader"
+import { createSvgIconsPlugin } from "vite-plugin-svg-icons"
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
 
 // Configuring Vite: https://cn.vite.dev/config
 export default defineConfig(({ mode }) => {

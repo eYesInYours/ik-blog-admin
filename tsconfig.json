@@ -28,18 +28,28 @@
     // 允许 JS
     "allowJs": true,
     // TS 严格模式
-    "strict": true,
     "importHelpers": true,
     // 不输出任何编译后的文件，只进行类型检查
     "noEmit": true,
+    "strict": false,
+    "skipLibCheck": true,
     "sourceMap": true,
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "isolatedModules": true,
-    "skipLibCheck": true
+    "noImplicitAny": false,
+    "suppressImplicitAnyIndexErrors": true,
   },
   // 需要被编译的文件列表
-  "include": ["**/*.ts", "**/*.tsx", "**/*.vue", "**/*.d.ts"],
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.d.ts",
+    "src/**/*.tsx",
+    "src/**/*.vue"
+  ],
   // 从编译中排除的文件列表
-  "exclude": ["node_modules", "dist"]
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }

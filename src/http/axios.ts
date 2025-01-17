@@ -115,7 +115,7 @@ function createRequest(instance: AxiosInstance) {
       // 请求超时
       timeout: 5000,
       // 跨域请求时是否携带 Cookies
-      withCredentials: false
+      withCredentials: true
     }
     // 将默认配置 defaultConfig 和传入的自定义配置 config 进行合并成为 mergeConfig
     const mergeConfig = merge(defaultConfig, config)

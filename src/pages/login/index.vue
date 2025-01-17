@@ -28,8 +28,8 @@ const codeUrl = ref("")
 
 /** 登录表单数据 */
 const loginFormData: LoginRequestData = reactive({
-  email: "eyesin_1206@163.com",
-  password: "jh159753",
+  email: "",
+  password: "",
   code: ""
 })
 
@@ -41,7 +41,7 @@ const loginFormRules: FormRules = {
   ],
   password: [
     { required: true, message: "请输入密码", trigger: "blur" },
-    { min: 8, max: 16, message: "长度在 8 到 16 个字符", trigger: "blur" }
+    { min: 6, max: 16, message: "长度在 8 到 16 个字符", trigger: "blur" }
   ],
   code: [
     { required: true, message: "请输入验证码", trigger: "blur" }

@@ -262,12 +262,14 @@ onBeforeUnmount(() => {
   height: 100%;
   display: flex;
   flex-direction: column;
+  background-color: #f5f5f5;
 
   .header {
     margin-bottom: 20px;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    padding: 0 1rem;
   }
 
   .main {
@@ -284,28 +286,72 @@ onBeforeUnmount(() => {
       overflow: hidden;
 
       .title-input {
-        margin-bottom: 20px;
+        margin-bottom: 1px;
+        :deep(.el-input__wrapper) {
+          box-shadow: none;
+          border-radius: 0;
+          padding: 0.75rem 1rem;
+          background-color: white;
+        }
+        :deep(.el-input__inner) {
+          font-size: 1.5rem;
+          font-weight: 500;
+          &::placeholder {
+            color: #999;
+          }
+        }
       }
 
       .editor-wrapper {
         flex: 1;
         display: flex;
         flex-direction: column;
-        border: 1px solid var(--el-border-color);
-        border-radius: 4px;
+        border: none;
         overflow: hidden;
+        background-color: white;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 
         .toolbar {
-          border-bottom: 1px solid var(--el-border-color);
+          border-bottom: 1px solid #e8e8e8;
+          padding: 0.5rem;
+
+          :deep(.w-e-bar) {
+            padding: 0 0.5rem;
+          }
+
+          :deep(.w-e-bar-item) {
+            margin: 0 2px;
+
+            button {
+              padding: 0.25rem;
+              border-radius: 4px;
+              &:hover {
+                background-color: #f3f3f3;
+              }
+            }
+          }
         }
 
         .edit-area {
           flex: 1;
           overflow: auto;
+          padding: 0 1rem;
+
+          :deep(.w-e-text-container) {
+            height: 100% !important;
+          }
+
+          :deep([data-slate-editor="true"]) {
+            padding: 1rem 0;
+          }
         }
 
         .editor {
           height: 100%;
+
+          :deep(.w-e-scroll) {
+            padding: 0;
+          }
         }
       }
     }
@@ -317,6 +363,8 @@ onBeforeUnmount(() => {
       .setting-card {
         position: sticky;
         top: 0;
+        border-radius: 4px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
       }
 
       .cover-uploader {
@@ -345,6 +393,33 @@ onBeforeUnmount(() => {
           height: 178px;
           display: block;
           object-fit: cover;
+        }
+      }
+    }
+  }
+}
+
+/* 暗色模式适配 */
+:root[class~="dark"] {
+  .article-edit {
+    background-color: #1a1a1a;
+  }
+
+  .editor-container {
+    .title-input {
+      :deep(.el-input__wrapper) {
+        background-color: #262626;
+      }
+    }
+
+    .editor-wrapper {
+      background-color: #262626;
+
+      .toolbar {
+        border-color: #363636;
+
+        :deep(.w-e-bar-item button:hover) {
+          background-color: #363636;
         }
       }
     }

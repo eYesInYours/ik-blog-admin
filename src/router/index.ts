@@ -115,6 +115,43 @@ export const constantRoutes: RouteRecordRaw[] = [
       title: "编辑文章",
       hidden: true
     }
+  },
+  {
+    path: "/lesson",
+    component: Layouts,
+    redirect: "/lesson/orders",
+    name: "Lesson",
+    meta: {
+      title: "课时管理",
+      elIcon: "Timer",
+      roles: ["writer"] // 只有作者可以访问
+    },
+    children: [
+      {
+        path: "orders",
+        component: () => import("@/pages/lesson/orders.vue"),
+        name: "LessonOrders",
+        meta: {
+          title: "订单管理"
+        }
+      },
+      {
+        path: "records",
+        component: () => import("@/pages/lesson/records.vue"),
+        name: "LessonRecords", 
+        meta: {
+          title: "使用记录"
+        }
+      },
+      {
+        path: "users",
+        component: () => import("@/pages/lesson/users.vue"),
+        name: "LessonUsers",
+        meta: {
+          title: "用户管理"
+        }
+      }
+    ]
   }
 ]
 

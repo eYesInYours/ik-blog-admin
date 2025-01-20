@@ -128,27 +128,19 @@ export const constantRoutes: RouteRecordRaw[] = [
     },
     children: [
       {
-        path: "orders",
-        component: () => import("@/pages/lesson/orders.vue"),
-        name: "LessonOrders",
+        path: "lessons",
+        component: () => import("@/pages/lesson/lessons.vue"),
+        name: "Lessons",
         meta: {
-          title: "订单管理"
+          title: "课程管理"
         }
       },
       {
-        path: "records",
-        component: () => import("@/pages/lesson/records.vue"),
-        name: "LessonRecords", 
+        path: "students",
+        component: () => import("@/pages/lesson/student.vue"),
+        name: "Students",
         meta: {
-          title: "使用记录"
-        }
-      },
-      {
-        path: "users",
-        component: () => import("@/pages/lesson/users.vue"),
-        name: "LessonUsers",
-        meta: {
-          title: "用户管理"
+          title: "学员管理"
         }
       }
     ]

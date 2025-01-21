@@ -52,6 +52,22 @@ interface Record {
   remark?: string
 }
 
+// 分析数据接口类型定义
+interface AnalysisData {
+  totalRecharge: number
+  totalConsumption: number
+  totalSessions: number
+  amountTrend: {
+    dates: string[]
+    recharge: number[]
+    consumption: number[]
+  }
+  sessionsTrend: {
+    dates: string[]
+    sessions: number[]
+  }
+}
+
 // API 接口
 export const studentApi = {
   // 获取学员列表
@@ -68,7 +84,6 @@ export const studentApi = {
     name: string
     phone: string
     email?: string
-    lessonId: string
     remark?: string
   }) {
     return request<ApiResponse<Student>>({
@@ -84,7 +99,6 @@ export const studentApi = {
     phone: string
     email?: string
     remark?: string
-    lessonId: string
   }) {
     return request<ApiResponse<Student>>({
       url: `/students/${id}`,
@@ -96,13 +110,14 @@ export const studentApi = {
   // 签到
   attendance(data: {
     studentId: string
+    lessonId: string
     sessions: number
     attendanceTime: string
     remark?: string
   }) {
     return request<ApiResponse<{
       record: Record
-      remainingSessions: number
+      balance: number
     }>>({
       url: "/students/attendance",
       method: "POST",
@@ -147,6 +162,15 @@ export const studentApi = {
     return request<ApiResponse<void>>({
       url: `/students/${id}`,
       method: "DELETE"
+    })
+  },
+
+  // 获取学员分析数据
+  getAnalysisData(studentId: string, params: { timeRange: 'week' | 'month' | 'year' }) {
+    return request<ApiResponse<AnalysisData>>({
+      url: `/students/${studentId}/analysis`,
+      method: 'GET',
+      params
     })
   }
 }

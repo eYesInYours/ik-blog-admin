@@ -190,40 +190,37 @@ onMounted(() => {
         <el-table-column prop="name" label="课程名称" />
         <el-table-column prop="type" label="课程类型">
           <template #default="{ row }">
-            <el-tag type="success" v-if="row.type === 'private'">一对一</el-tag>
-            <el-tag type="info" v-else>班课</el-tag>
+            <el-tag>{{ getTypeText(row.type) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="totalSessions" label="总课时" />
-        <el-table-column prop="minutesPerSession" label="每节时长(分钟)" />
-        <el-table-column prop="price" label="价格" />
+        <el-table-column label="课时信息">
+          <template #default="{ row }">
+            <div>总课时：{{ row.totalSessions }}节</div>
+            <div>每节时长：{{ row.minutesPerSession }}分钟</div>
+            <div class="text-price">课时单价：¥{{ row.price.toFixed(2) }}</div>
+          </template>
+        </el-table-column>
         <el-table-column prop="status" label="状态">
           <template #default="{ row }">
             <el-switch
               v-model="row.status"
               :active-value="'active'"
               :inactive-value="'inactive'"
-              @change="() => handleStatusChange(row)"
+              @change="(val) => handleStatusChange(row._id, val)"
             />
           </template>
         </el-table-column>
         <el-table-column prop="createdAt" label="创建时间" width="180" />
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
-            <el-button
-              type="primary"
-              size="small"
-              @click="handleEdit(row)"
-            >
+            <el-button type="primary" size="small" @click="handleEdit(row)">
               编辑
             </el-button>
-            <el-button
-              type="danger"
-              size="small"
-              @click="handleDelete(row._id)"
-            >
-              删除
-            </el-button>
+            <el-popconfirm title="确定要删除吗？" @confirm="handleDelete(row._id)">
+              <template #reference>
+                <el-button type="danger" size="small">删除</el-button>
+              </template>
+            </el-popconfirm>
           </template>
         </el-table-column>
       </el-table>
@@ -339,5 +336,11 @@ onMounted(() => {
   width: 178px;
   height: 178px;
   display: block;
+}
+
+.text-price {
+  color: #f56c6c;
+  font-weight: bold;
+  margin-top: 4px;
 }
 </style>

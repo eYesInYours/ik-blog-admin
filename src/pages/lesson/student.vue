@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue"
+import { ref, onMounted, onUnmounted } from "vue"
 import { ElMessage, ElMessageBox } from "element-plus"
-import { Search, Plus } from "@element-plus/icons-vue"
+import { Search, Plus, Minus, Timer } from "@element-plus/icons-vue"
 import { studentApi } from "@/api/student"
 import { lessonApi } from "@/api/lesson"
+import * as echarts from 'echarts'
 
 // 表格数据
 const tableData = ref([])
@@ -133,18 +134,38 @@ const attendanceDialogVisible = ref(false)
 const currentStudent = ref<any>(null)
 const attendanceForm = ref({
   studentId: "",
+  lessonId: "",
   attendanceTime: new Date().toISOString().slice(0, 19).replace('T', ' '),
   sessions: 1,
+  amount: 0,
   remark: ""
 })
 
+// 当前选中的课程
+const selectedLesson = ref<any>(null)
+
+// 选择课程时的处理
+const handleLessonSelect = (lessonId: string) => {
+  selectedLesson.value = lessonList.value.find(l => l._id === lessonId)
+  calculateAmount()
+}
+
+// 计算扣除金额
+const calculateAmount = () => {
+  if (selectedLesson.value) {
+    attendanceForm.value.amount = attendanceForm.value.sessions * selectedLesson.value.price
+  }
+}
+
 // 打开签到对话框
 const handleAttendance = (student: any) => {
-  currentStudent.value = student  // 设置当前学员信息
+  currentStudent.value = student
   attendanceForm.value = {
     studentId: student._id,
+    lessonId: "",
     attendanceTime: new Date().toISOString().slice(0, 19).replace('T', ' '),
     sessions: 1,
+    amount: 0,
     remark: ""
   }
   attendanceDialogVisible.value = true
@@ -153,10 +174,18 @@ const handleAttendance = (student: any) => {
 // 提交签到
 const handleAttendanceSubmit = async () => {
   try {
+    if (!attendanceForm.value.lessonId) {
+      return ElMessage.warning("请选择课程")
+    }
+
     await studentApi.attendance({
-      ...attendanceForm.value,
+      studentId: attendanceForm.value.studentId,
+      lessonId: attendanceForm.value.lessonId,
+      sessions: attendanceForm.value.sessions,
+      attendanceTime: attendanceForm.value.attendanceTime,
       remark: attendanceForm.value.remark.trim() || undefined
     })
+
     ElMessage.success("签到成功")
     attendanceDialogVisible.value = false
     getStudents()
@@ -170,7 +199,7 @@ const handleAttendanceSubmit = async () => {
 const rechargeDialogVisible = ref(false)
 const rechargeForm = ref({
   studentId: "",
-  sessions: 1,
+  amount: 0,
   remark: ""
 })
 
@@ -178,7 +207,7 @@ const rechargeForm = ref({
 const handleRecharge = (student: any) => {
   rechargeForm.value = {
     studentId: student._id,
-    sessions: 1,
+    amount: 0,
     remark: ""
   }
   rechargeDialogVisible.value = true
@@ -201,7 +230,6 @@ const handleRechargeSubmit = async () => {
 }
 
 // 选择课程后展示课程信息
-const selectedLesson = ref(null)
 const handleLessonChange = (value: string) => {
   const lesson = lessonList.value.find(l => l._id === value)
   if (lesson) {
@@ -338,6 +366,186 @@ const formatDateTime = (time: string) => {
   });
 }
 
+// 添加分析对话框
+const analysisDialogVisible = ref(false)
+const analysisLoading = ref(false)
+const analysisData = ref({
+  totalRecharge: 0,
+  totalConsumption: 0,
+  totalSessions: 0
+})
+const amountChartRef = ref(null)
+const sessionsChartRef = ref(null)
+const analysisTimeRange = ref("week")
+
+// 图表实例
+let amountChart: echarts.ECharts | null = null
+let sessionsChart: echarts.ECharts | null = null
+
+// 处理分析按钮点击
+const handleAnalysis = async (student: any) => {
+  try {
+    currentStudent.value = student
+    analysisDialogVisible.value = true
+    await getAnalysisData(student._id)
+    initCharts()
+  } catch (error) {
+    console.error('分析失败:', error)
+    ElMessage.error('获取分析数据失败')
+  }
+}
+
+// 获取分析数据
+const getAnalysisData = async (studentId: string) => {
+  try {
+    analysisLoading.value = true
+    const { data } = await studentApi.getAnalysisData(studentId, {
+      timeRange: analysisTimeRange.value
+    })
+    analysisData.value = data
+  } catch (error) {
+    console.error('获取分析数据失败:', error)
+    throw error
+  } finally {
+    analysisLoading.value = false
+  }
+}
+
+// 初始化图表
+const initCharts = () => {
+  if (amountChartRef.value && sessionsChartRef.value) {
+    // 销毁旧的图表实例
+    amountChart?.dispose()
+    sessionsChart?.dispose()
+
+    // 初始化金额趋势图
+    amountChart = echarts.init(amountChartRef.value)
+    amountChart.setOption({
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: {
+          type: 'shadow'
+        }
+      },
+      legend: {
+        data: ['充值', '消费']
+      },
+      xAxis: {
+        type: 'category',
+        data: analysisData.value.amountTrend.dates
+      },
+      yAxis: {
+        type: 'value'
+      },
+      series: [
+        {
+          name: '充值',
+          type: 'bar',
+          stack: 'amount',
+          data: analysisData.value.amountTrend.recharge,
+          itemStyle: {
+            color: '#67c23a'
+          }
+        },
+        {
+          name: '消费',
+          type: 'bar',
+          stack: 'amount',
+          data: analysisData.value.amountTrend.consumption,
+          itemStyle: {
+            color: '#f56c6c'
+          }
+        }
+      ]
+    })
+
+    // 初始化课时趋势图
+    sessionsChart = echarts.init(sessionsChartRef.value)
+    sessionsChart.setOption({
+      tooltip: {
+        trigger: 'axis'
+      },
+      xAxis: {
+        type: 'category',
+        data: analysisData.value.sessionsTrend.dates
+      },
+      yAxis: {
+        type: 'value'
+      },
+      series: [
+        {
+          name: '课时',
+          type: 'line',
+          data: analysisData.value.sessionsTrend.sessions,
+          areaStyle: {},
+          itemStyle: {
+            color: '#409eff'
+          }
+        }
+      ]
+    })
+  }
+}
+
+// 更新图表数据
+const updateCharts = () => {
+  if (amountChart && sessionsChart) {
+    amountChart.setOption({
+      xAxis: {
+        data: analysisData.value.amountTrend.dates
+      },
+      series: [
+        {
+          data: analysisData.value.amountTrend.recharge
+        },
+        {
+          data: analysisData.value.amountTrend.consumption
+        }
+      ]
+    })
+
+    sessionsChart.setOption({
+      xAxis: {
+        data: analysisData.value.sessionsTrend.dates
+      },
+      series: [
+        {
+          data: analysisData.value.sessionsTrend.sessions
+        }
+      ]
+    })
+  }
+}
+
+// 处理时间范围变化
+const handleAnalysisRangeChange = async (e: any) => {
+  console.log(e)
+  if (currentStudent.value) {
+    try {
+      await getAnalysisData(currentStudent.value._id)
+      updateCharts()
+    } catch (error) {
+      console.error('更新分析数据失败:', error)
+    }
+  }
+}
+
+// 组件卸载时清理图表实例
+onUnmounted(() => {
+  amountChart?.dispose()
+  sessionsChart?.dispose()
+  window.removeEventListener('resize', handleResize)
+})
+
+// 处理窗口大小变化
+const handleResize = () => {
+  amountChart?.resize()
+  sessionsChart?.resize()
+}
+
+// 监听窗口大小变化
+window.addEventListener('resize', handleResize)
+
 onMounted(() => {
   getStudents()
   getLessons()
@@ -375,30 +583,11 @@ onMounted(() => {
         <el-table-column prop="name" label="姓名" />
         <el-table-column prop="phone" label="手机号" />
         <el-table-column prop="email" label="邮箱" />
-        <el-table-column label="课程信息" min-width="200">
+        <el-table-column prop="balance" label="账户余额">
           <template #default="{ row }">
-            <div class="info-line">
-              <span class="info-label">课程：</span>
-              <el-text type="info">{{ row.lessonId.name }}</el-text>
-            </div>
-            <div class="info-line">
-              <span class="info-label">类型：</span>
-              <el-text type="info">{{ row.lessonId.type === 'private' ? '一对一' : '班课' }}</el-text>
-            </div>
-            <div class="info-line">
-              <span class="info-label">课时：</span>
-              <el-text type="info">
-                余{{ row.remainingSessions }} / 共{{ row.totalSessions }}节
-              </el-text>
-            </div>
-            <div class="info-line">
-              <span class="info-label">时长：</span>
-              <el-text type="info">每节{{ row.lessonId.minutesPerSession }}分钟</el-text>
-            </div>
-            <div class="info-line">
-              <span class="info-label">价格：</span>
-              <el-text type="danger">¥{{ row.lessonId.price }}</el-text>
-            </div>
+            <el-text :type="row.balance >= 0 ? 'success' : 'danger'">
+              ¥{{ row.balance.toFixed(2) }}
+            </el-text>
           </template>
         </el-table-column>
         <el-table-column prop="status" label="状态">
@@ -409,30 +598,28 @@ onMounted(() => {
           </template>
         </el-table-column>
         <el-table-column prop="createdAt" label="创建时间" width="180" />
-        <el-table-column label="操作" width="380" fixed="right">
+        <el-table-column label="操作" width="460" fixed="right">
           <template #default="{ row }">
-            <el-button type="warning" size="small" @click="handleUpdate(row)">
-              更新
+            <el-button type="primary" size="small" @click="handleAttendance(row)">
+              签到
             </el-button>
-            <el-tooltip content="剩余课时不足，请先充值" :disabled="row.remainingSessions > 0" placement="top">
-              <el-button type="primary" size="small" @click="handleAttendance(row)"
-                :disabled="row.remainingSessions <= 0">
-                签到
-              </el-button>
-            </el-tooltip>
             <el-button type="success" size="small" @click="handleRecharge(row)">
               充值
             </el-button>
             <el-button type="info" size="small" @click="handleViewRecords(row)">
               记录
             </el-button>
-            <el-tooltip
-              :content="row.remainingSessions > 0 ? '该学员还有未完成的课程，请先使用完课时' : '确定要删除该学员吗？删除后将无法恢复，且相关的上课记录也会被删除。'"
-              :disabled="row.remainingSessions <= 0" placement="top">
-              <el-button type="danger" size="small" @click="handleDelete(row)" :disabled="row.remainingSessions > 0">
-                删除
-              </el-button>
-            </el-tooltip>
+            <el-button type="warning" size="small" @click="handleEdit(row)">
+              编辑
+            </el-button>
+            <el-button type="primary" size="small" @click="handleAnalysis(row)">
+              分析
+            </el-button>
+            <el-popconfirm title="确定要删除吗？" @confirm="handleDelete(row._id)">
+              <template #reference>
+                <el-button type="danger" size="small">删除</el-button>
+              </template>
+            </el-popconfirm>
           </template>
         </el-table-column>
       </el-table>
@@ -509,46 +696,35 @@ onMounted(() => {
           <el-text>{{ currentStudent?.name }}</el-text>
         </div>
         <div class="info-line">
-          <span class="info-label">课程：</span>
-          <el-text>{{ currentStudent?.lessonId.name }}</el-text>
-          <el-tag size="small" class="ml-2">
-            {{ currentStudent?.lessonId.type === 'private' ? '一对一' : '班课' }}
-          </el-tag>
-        </div>
-        <div class="info-line">
-          <span class="info-label">课时：</span>
-          <el-text type="warning">剩余 {{ currentStudent?.remainingSessions }} 节</el-text>
-          <el-text type="info" class="ml-2">
-            (本次签到后剩余 {{ currentStudent?.remainingSessions - attendanceForm.sessions }} 节)
+          <span class="info-label">余额：</span>
+          <el-text :type="currentStudent?.balance >= 0 ? 'success' : 'danger'">
+            ¥{{ currentStudent?.balance.toFixed(2) }}
           </el-text>
         </div>
       </div>
       <el-divider />
       <el-form :model="attendanceForm" label-width="100px">
+        <el-form-item label="选择课程" required>
+          <el-select v-model="attendanceForm.lessonId" placeholder="请选择课程" @change="handleLessonSelect">
+            <el-option v-for="lesson in lessonList" :key="lesson._id" :label="lesson.name" :value="lesson._id">
+              <span>{{ lesson.name }}</span>
+              <span class="text-gray ml-2">(¥{{ lesson.price }}/课时)</span>
+            </el-option>
+          </el-select>
+        </el-form-item>
         <el-form-item label="签到时间" required>
-          <el-date-picker
-            v-model="attendanceForm.attendanceTime"
-            type="datetime"
-            placeholder="选择日期时间"
-            format="YYYY-MM-DD HH:mm"
-            value-format="YYYY-MM-DD HH:mm:ss"
-            :default-time="new Date(2000, 1, 1, new Date().getHours(), new Date().getMinutes(), 0)"
-          />
+          <el-date-picker v-model="attendanceForm.attendanceTime" type="datetime" placeholder="选择日期时间"
+            format="YYYY-MM-DD HH:mm" value-format="YYYY-MM-DD HH:mm:ss"
+            :default-time="new Date(2000, 1, 1, new Date().getHours(), new Date().getMinutes(), 0)" />
         </el-form-item>
         <el-form-item label="课时数" required>
-          <el-input-number
-            v-model="attendanceForm.sessions"
-            :min="1"
-            :max="currentStudent?.remainingSessions"
-          />
+          <el-input-number v-model="attendanceForm.sessions" :min="1" @change="calculateAmount" />
+        </el-form-item>
+        <el-form-item label="扣除金额">
+          <el-text type="danger">¥{{ attendanceForm.amount.toFixed(2) }}</el-text>
         </el-form-item>
         <el-form-item label="备注">
-          <el-input
-            v-model="attendanceForm.remark"
-            type="textarea"
-            :rows="2"
-            placeholder="请输入备注信息"
-          />
+          <el-input v-model="attendanceForm.remark" type="textarea" :rows="2" placeholder="请输入备注信息" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -558,18 +734,27 @@ onMounted(() => {
     </el-dialog>
 
     <!-- 充值对话框 -->
-    <el-dialog v-model="rechargeDialogVisible" title="课时充值" width="400px">
+    <el-dialog v-model="rechargeDialogVisible" title="账户充值" width="500px">
+      <!-- 学员信息展示 -->
+      <div class="attendance-info">
+        <div class="info-line">
+          <span class="info-label">学员：</span>
+          <el-text>{{ currentStudent?.name }}</el-text>
+        </div>
+        <div class="info-line">
+          <span class="info-label">余额：</span>
+          <el-text :type="currentStudent?.balance >= 0 ? 'success' : 'danger'">
+            ¥{{ currentStudent?.balance.toFixed(2) }}
+          </el-text>
+        </div>
+      </div>
+      <el-divider />
       <el-form :model="rechargeForm" label-width="100px">
-        <el-form-item label="课时数" required>
-          <el-input-number v-model="rechargeForm.sessions" :min="1" />
+        <el-form-item label="充值金额" required>
+          <el-input-number v-model="rechargeForm.amount" :min="0" :precision="2" :step="100" />
         </el-form-item>
         <el-form-item label="备注">
-          <el-input
-            v-model="rechargeForm.remark"
-            type="textarea"
-            :rows="2"
-            placeholder="请输入备注信息"
-          />
+          <el-input v-model="rechargeForm.remark" type="textarea" :rows="2" placeholder="请输入备注信息" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -579,7 +764,7 @@ onMounted(() => {
     </el-dialog>
 
     <!-- 上课记录对话框 -->
-    <el-dialog v-model="recordsDialogVisible" title="课时记录" width="800px">
+    <el-dialog v-model="recordsDialogVisible" title="账户记录" width="800px">
       <div v-loading="recordsLoading">
         <el-table :data="recordsList" style="width: 100%">
           <el-table-column prop="recordTime" label="时间" width="180">
@@ -596,42 +781,38 @@ onMounted(() => {
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="sessions" label="课时变动" width="120">
+          <el-table-column prop="amount" label="金额变动" width="120">
             <template #default="{ row }">
-              <span :class="row.type === 'attendance' ? 'text-danger' : 'text-success'">
-                {{ row.type === 'attendance' ? '-' : '+' }}{{ Math.abs(row.sessions) }}
+              <span :class="(row.amount || 0) < 0 ? 'text-danger' : 'text-success'">
+                {{ row.amount > 0 ? '+' : '' }}{{ (row.amount || 0).toFixed(2) }}
               </span>
+            </template>
+          </el-table-column>
+          <el-table-column label="课程信息" width="200">
+            <template #default="{ row }">
+              <template v-if="row.type === 'attendance' && row.lessonId">
+                <div>{{ row.lessonId.name }}</div>
+                <div class="text-gray">{{ row.sessions }}课时</div>
+              </template>
             </template>
           </el-table-column>
           <el-table-column label="备注" show-overflow-tooltip>
             <template #default="{ row }">
-              <template v-if="row.type === 'attendance'">
-                <div v-if="row.teacherName">授课老师：{{ row.teacherName }}</div>
-                <div v-if="row.content">课程内容：{{ row.content }}</div>
-              </template>
-              <div v-if="row.remark">{{ row.remark }}</div>
+              <span v-if="row.remark">{{ row.remark }}</span>
             </template>
           </el-table-column>
         </el-table>
         <!-- 记录分页 -->
         <div class="pagination-wrapper">
-          <el-pagination
-            v-model:current-page="recordsQuery.page"
-            v-model:page-size="recordsQuery.limit"
-            :total="recordsTotal"
-            :page-sizes="[10, 20, 50]"
-            small
-            background
-            layout="total, sizes, prev, pager, next"
-            @size-change="getRecords"
-            @current-change="getRecords"
-          />
+          <el-pagination v-model:current-page="recordsQuery.page" v-model:page-size="recordsQuery.limit"
+            :total="recordsTotal" :page-sizes="[10, 20, 50]" small background layout="total, sizes, prev, pager, next"
+            @size-change="getRecords" @current-change="getRecords" />
         </div>
       </div>
     </el-dialog>
 
     <!-- 编辑对话框 -->
-    <el-dialog v-model="editDialogVisible" title="编辑学员" width="500px">
+    <el-dialog v-model="editDialogVisible" :title="dialogTitle" width="500px">
       <el-form :model="editForm" label-width="100px">
         <el-form-item label="姓名" required>
           <el-input v-model="editForm.name" />
@@ -642,13 +823,6 @@ onMounted(() => {
         <el-form-item label="邮箱">
           <el-input v-model="editForm.email" />
         </el-form-item>
-        <!-- 只读展示课程信息 -->
-        <el-form-item label="课程">
-          <div>{{ editForm.lessonName }}</div>
-        </el-form-item>
-        <el-form-item label="课时">
-          <div>{{ editForm.remainingSessions }}/{{ editForm.totalSessions }}</div>
-        </el-form-item>
         <el-form-item label="备注">
           <el-input v-model="editForm.remark" type="textarea" :rows="3" />
         </el-form-item>
@@ -657,6 +831,75 @@ onMounted(() => {
         <el-button @click="editDialogVisible = false">取消</el-button>
         <el-button type="primary" @click="handleEditSubmit">确定</el-button>
       </template>
+    </el-dialog>
+
+    <!-- 分析对话框 -->
+    <el-dialog v-model="analysisDialogVisible" title="学员分析" width="900px">
+      <!-- 头部信息不需要loading -->
+      <div class="analysis-header">
+        <div class="student-info">
+          <h3>{{ currentStudent?.name }}</h3>
+          <div class="balance-info">
+            当前余额：
+            <span :class="(currentStudent?.balance || 0) >= 0 ? 'text-success' : 'text-danger'">
+              ¥{{ (currentStudent?.balance || 0).toFixed(2) }}
+            </span>
+          </div>
+        </div>
+        <div class="date-filter">
+          <el-radio-group v-model="analysisTimeRange" @change="handleAnalysisRangeChange">
+            <el-radio-button label="week">本周</el-radio-button>
+            <el-radio-button label="month">本月</el-radio-button>
+            <el-radio-button label="year">本年</el-radio-button>
+          </el-radio-group>
+        </div>
+      </div>
+
+      <!-- 内容区域使用loading -->
+      <el-loading :visible="analysisLoading" />
+
+      <!-- 统计数据卡片 -->
+      <div class="stat-cards">
+        <div class="stat-card">
+          <div class="stat-icon success">
+            <el-icon><Plus /></el-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-label">充值总额</div>
+            <div class="stat-value text-success">¥{{ (analysisData.totalRecharge || 0).toFixed(2) }}</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon danger">
+            <el-icon><Minus /></el-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-label">消费总额</div>
+            <div class="stat-value text-danger">¥{{ (analysisData.totalConsumption || 0).toFixed(2) }}</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon info">
+            <el-icon><Timer /></el-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-label">总课时</div>
+            <div class="stat-value">{{ analysisData.totalSessions || 0 }}节</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 图表展示 -->
+      <div class="charts-container">
+        <el-card class="chart-card">
+          <template #header>金额趋势</template>
+          <div ref="amountChartRef" style="height: 300px"></div>
+        </el-card>
+        <el-card class="chart-card">
+          <template #header>课时消耗</template>
+          <div ref="sessionsChartRef" style="height: 300px"></div>
+        </el-card>
+      </div>
     </el-dialog>
   </div>
 </template>
@@ -723,5 +966,104 @@ onMounted(() => {
 .text-success {
   color: #67c23a;
   font-weight: 500;
+}
+
+.analysis-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+
+  .student-info {
+    h3 {
+      margin: 0;
+      margin-bottom: 8px;
+      font-size: 20px;
+    }
+  }
+}
+
+.stat-cards {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 24px;
+
+  .stat-card {
+    flex: 1;
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+    transition: all 0.3s ease;
+
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.15);
+    }
+
+    .stat-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-right: 16px;
+      font-size: 24px;
+      color: white;
+
+      &.success {
+        background: linear-gradient(135deg, #67c23a 0%, #95d475 100%);
+      }
+
+      &.danger {
+        background: linear-gradient(135deg, #f56c6c 0%, #f89898 100%);
+      }
+
+      &.info {
+        background: linear-gradient(135deg, #409eff 0%, #79bbff 100%);
+      }
+    }
+
+    .stat-info {
+      flex: 1;
+
+      .stat-label {
+        font-size: 14px;
+        color: var(--el-text-color-secondary);
+        margin-bottom: 8px;
+      }
+
+      .stat-value {
+        font-size: 24px;
+        font-weight: bold;
+        line-height: 1;
+
+        &.text-success {
+          color: var(--el-color-success);
+        }
+
+        &.text-danger {
+          color: var(--el-color-danger);
+        }
+      }
+    }
+  }
+}
+
+.charts-container {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 24px;
+
+  .chart-card {
+    .chart-header {
+      font-size: 16px;
+      font-weight: bold;
+      color: var(--el-text-color-primary);
+    }
+  }
 }
 </style>

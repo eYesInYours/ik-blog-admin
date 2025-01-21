@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from "vue"
+import { ref, onMounted, onUnmounted, watch } from "vue"
 import { ElMessage, ElMessageBox } from "element-plus"
-import { Search, Plus, Minus, Timer } from "@element-plus/icons-vue"
+import { Search, Plus, Minus } from "@element-plus/icons-vue"
 import { studentApi } from "@/api/student"
 import { lessonApi } from "@/api/lesson"
 import * as echarts from 'echarts'
@@ -16,7 +16,8 @@ const queryParams = ref({
   page: 1,
   limit: 10,
   keyword: "",
-  status: ""
+  status: "active",
+  deleted: false as boolean | '' // 添加删除状态查询
 })
 
 // 获取学员列表
@@ -62,21 +63,74 @@ const dialogVisible = ref(false)
 const dialogTitle = ref("")
 const dialogType = ref<"create" | "update">("create")
 
+// 表单验证规则
+const formRules = {
+  name: [
+    { required: true, message: '请输入姓名', trigger: 'blur' },
+    { min: 2, max: 20, message: '姓名长度应在 2-20 个字符之间', trigger: 'blur' }
+  ],
+  phone: [
+    { required: true, message: '请输入手机号', trigger: 'blur' },
+    {
+      pattern: /^1[3-9]\d{9}$/,
+      message: '请输入正确的手机号格式',
+      trigger: ['blur', 'change']
+    }
+  ],
+  email: [
+    { required: false, message: '请输入邮箱', trigger: 'blur' },
+    {
+      type: 'email',
+      message: '请输入正确的邮箱格式',
+      trigger: ['blur', 'change']
+    }
+  ]
+}
+
+// 表单引用
+const formRef = ref()
+
+// 提交表单
+const handleSubmit = async () => {
+  if (!formRef.value) return
+
+  try {
+    await formRef.value.validate()
+
+    if (dialogType.value === 'create') {
+      const { data } = await studentApi.create(formData.value)
+      ElMessage.success(data.message || '创建成功')
+      dialogVisible.value = false
+    } else {
+      await studentApi.update(formData.value.id, formData.value)
+      ElMessage.success('更新成功')
+      dialogVisible.value = false
+    }
+    getStudents()
+  } catch (error: any) {
+    console.error('提交失败:', error)
+    ElMessage.error(error.response?.data?.message || (dialogType.value === 'create' ? '创建失败' : '更新失败'))
+  }
+}
+
+// 重置表单
+const resetForm = () => {
+  if (formRef.value) {
+    formRef.value.resetFields()
+  }
+  formData.value = {
+    name: '',
+    phone: '',
+    email: '',
+    remark: ''
+  }
+}
+
 // 打开创建对话框
 const handleCreate = () => {
-  dialogType.value = "create"
-  dialogTitle.value = "创建学员"
-  formData.value = {
-    id: "",
-    name: "",
-    phone: "",
-    email: "",
-    lessonId: "",
-    totalSessions: 0,
-    remainingSessions: 0,
-    remark: ""
-  }
-  selectedLesson.value = null
+  dialogType.value = 'create'
+  dialogTitle.value = '创建学员'
+  resetForm()
   dialogVisible.value = true
 }
 
@@ -97,36 +151,6 @@ const handleUpdate = (row: any) => {
   // 设置选中的课程信息
   selectedLesson.value = row.lessonId
   dialogVisible.value = true
-}
-
-// 提交表单
-const handleSubmit = async () => {
-  try {
-    if (dialogType.value === "create") {
-      await studentApi.create({
-        name: formData.value.name,
-        phone: formData.value.phone,
-        email: formData.value.email,
-        lessonId: formData.value.lessonId,
-        remark: formData.value.remark
-      })
-      ElMessage.success("创建成功")
-    } else {
-      await studentApi.update(formData.value.id, {
-        name: formData.value.name,
-        phone: formData.value.phone,
-        email: formData.value.email,
-        remark: formData.value.remark,
-        lessonId: formData.value.lessonId
-      })
-      ElMessage.success("更新成功")
-    }
-    dialogVisible.value = false
-    getStudents()
-  } catch (error) {
-    ElMessage.error(dialogType.value === "create" ? "创建失败" : "更新失败")
-    console.error(error)
-  }
 }
 
 // 签到相关
@@ -243,17 +267,21 @@ const recordsLoading = ref(false)
 const recordsList = ref([])
 const recordsQuery = ref({
   page: 1,
-  limit: 10
+  limit: 10,
+  type: ''
 })
 const recordsTotal = ref(0)
 
 // 获取上课记录
 const getRecords = async (studentId: string) => {
+  if (!studentId) return // 添加空值检查
+
   try {
     recordsLoading.value = true
     const { data } = await studentApi.getAttendanceRecords(studentId, {
       page: recordsQuery.value.page,
-      limit: recordsQuery.value.limit
+      limit: recordsQuery.value.limit,
+      type: recordsQuery.value.type
     })
     recordsList.value = data.records
     recordsTotal.value = data.pagination.total
@@ -267,11 +295,13 @@ const getRecords = async (studentId: string) => {
 
 // 打开记录对话框
 const handleViewRecords = (student: any) => {
+  currentStudent.value = student // 设置当前学员
+  recordsDialogVisible.value = true
   recordsQuery.value = {
     page: 1,
-    limit: 10
+    limit: 10,
+    type: ''
   }
-  recordsDialogVisible.value = true
   getRecords(student._id)
 }
 
@@ -288,17 +318,17 @@ const editForm = ref({
 })
 
 // 打开编辑对话框
-const handleEdit = (student: any) => {
-  editForm.value = {
-    name: student.name,
-    phone: student.phone,
-    email: student.email,
-    lessonName: student.lessonId.name,
-    remainingSessions: student.remainingSessions,
-    totalSessions: student.totalSessions,
-    remark: student.remark
+const handleEdit = (row: any) => {
+  dialogType.value = 'edit'
+  dialogTitle.value = '编辑学员'
+  formData.value = {
+    id: row._id,
+    name: row.name,
+    phone: row.phone,
+    email: row.email || '',
+    remark: row.remark || ''
   }
-  editDialogVisible.value = true
+  dialogVisible.value = true
 }
 
 // 提交编辑
@@ -320,34 +350,15 @@ const handleEditSubmit = async () => {
 }
 
 // 删除学员
-const handleDelete = (row: any) => {
-  if (row.remainingSessions > 0) {
-    ElMessage.warning('该学员还有未完成的课程，无法删除')
-    return
+const handleDelete = async (id: string) => {
+  try {
+    await studentApi.delete(id)
+    ElMessage.success('删除成功')
+    getStudents()
+  } catch (error) {
+    ElMessage.error('删除失败')
+    console.error(error)
   }
-
-  ElMessageBox.confirm(
-    '确定要删除该学员吗？删除后将无法恢复，且相关的上课记录也会被删除。',
-    '删除确认',
-    {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning'
-    }
-  )
-    .then(async () => {
-      try {
-        await studentApi.delete(row._id)
-        ElMessage.success('删除成功')
-        getStudents()
-      } catch (error) {
-        ElMessage.error('删除失败')
-        console.error(error)
-      }
-    })
-    .catch(() => {
-      // 取消删除
-    })
 }
 
 // 格式化时间的函数
@@ -550,6 +561,46 @@ onMounted(() => {
   getStudents()
   getLessons()
 })
+
+// 关闭对话框时重置表单
+watch(dialogVisible, (val) => {
+  if (!val) {
+    resetForm()
+  }
+})
+
+// 添加筛选按钮
+const handleFilterRecords = (type: string) => {
+  if (!currentStudent.value?._id) return // 添加空值检查
+
+  recordsQuery.value.type = type
+  recordsQuery.value.page = 1
+  getRecords(currentStudent.value._id)
+}
+
+// 恢复学员
+const handleRestore = async (id: string) => {
+  try {
+    await studentApi.restore(id)
+    ElMessage.success('恢复成功')
+    getStudents()
+  } catch (error) {
+    console.error('恢复失败:', error)
+    ElMessage.error('恢复失败')
+  }
+}
+
+// 彻底删除学员
+const handlePermanentDelete = async (id: string) => {
+  try {
+    await studentApi.permanentDelete(id)
+    ElMessage.success('删除成功')
+    getStudents()
+  } catch (error) {
+    console.error('删除失败:', error)
+    ElMessage.error('删除失败')
+  }
+}
 </script>
 
 <template>
@@ -558,21 +609,24 @@ onMounted(() => {
     <el-card class="search-wrapper">
       <el-form :inline="true" :model="queryParams">
         <el-form-item label="关键词">
-          <el-input v-model="queryParams.keyword" placeholder="姓名/手机/邮箱" clearable />
+          <el-input v-model="queryParams.keyword" placeholder="姓名/手机号" :prefix-icon="Search" clearable
+            @keyup.enter="getStudents" />
         </el-form-item>
         <el-form-item label="状态">
-          <el-select v-model="queryParams.status" placeholder="请选择" clearable>
+          <el-select v-model="queryParams.status" placeholder="状态" clearable style="width: 160px;">
             <el-option label="在读" value="active" />
             <el-option label="结业" value="inactive" />
           </el-select>
         </el-form-item>
+        <el-form-item label="删除状态">
+          <el-select v-model="queryParams.deleted" placeholder="删除状态" clearable style="width: 160px;">
+            <el-option label="正常" :value="false" />
+            <el-option label="已删除" :value="true" />
+          </el-select>
+        </el-form-item>
         <el-form-item>
-          <el-button type="primary" :icon="Search" @click="getStudents">
-            搜索
-          </el-button>
-          <el-button type="success" :icon="Plus" @click="handleCreate">
-            新建学员
-          </el-button>
+          <el-button type="primary" :icon="Search" @click="getStudents">搜索</el-button>
+          <el-button type="success" :icon="Plus" @click="handleCreate">新增学员</el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -585,9 +639,12 @@ onMounted(() => {
         <el-table-column prop="email" label="邮箱" />
         <el-table-column prop="balance" label="账户余额">
           <template #default="{ row }">
-            <el-text :type="row.balance >= 0 ? 'success' : 'danger'">
-              ¥{{ row.balance.toFixed(2) }}
-            </el-text>
+            <span :class="[
+              'balance-text',
+              row.balance < 0 ? 'balance-negative' : 'balance-positive'
+            ]">
+              ¥ {{ row.balance.toFixed(2) }}
+            </span>
           </template>
         </el-table-column>
         <el-table-column prop="status" label="状态">
@@ -600,26 +657,35 @@ onMounted(() => {
         <el-table-column prop="createdAt" label="创建时间" width="180" />
         <el-table-column label="操作" width="460" fixed="right">
           <template #default="{ row }">
-            <el-button type="primary" size="small" @click="handleAttendance(row)">
-              签到
-            </el-button>
-            <el-button type="success" size="small" @click="handleRecharge(row)">
-              充值
-            </el-button>
-            <el-button type="info" size="small" @click="handleViewRecords(row)">
-              记录
-            </el-button>
-            <el-button type="warning" size="small" @click="handleEdit(row)">
-              编辑
-            </el-button>
-            <el-button type="primary" size="small" @click="handleAnalysis(row)">
-              分析
-            </el-button>
-            <el-popconfirm title="确定要删除吗？" @confirm="handleDelete(row._id)">
-              <template #reference>
-                <el-button type="danger" size="small">删除</el-button>
-              </template>
-            </el-popconfirm>
+            <template v-if="!row.deleted">
+              <el-button type="primary" size="small" @click="handleAttendance(row)">
+                签到
+              </el-button>
+              <el-button type="success" size="small" @click="handleRecharge(row)">
+                充值
+              </el-button>
+              <el-button type="warning" size="small" @click="handleViewRecords(row)">
+                记录
+              </el-button>
+              <el-button type="info" size="small" @click="handleAnalysis(row)">
+                分析
+              </el-button>
+              <el-popconfirm title="确定要删除吗？" @confirm="handleDelete(row._id)">
+                <template #reference>
+                  <el-button type="danger" size="small">删除</el-button>
+                </template>
+              </el-popconfirm>
+            </template>
+            <template v-else>
+              <el-button type="success" size="small" @click="handleRestore(row._id)">
+                恢复
+              </el-button>
+              <el-popconfirm title="彻底删除后将无法恢复，是否继续？" @confirm="handlePermanentDelete(row._id)">
+                <template #reference>
+                  <el-button type="danger" size="small">彻底删除</el-button>
+                </template>
+              </el-popconfirm>
+            </template>
           </template>
         </el-table-column>
       </el-table>
@@ -634,50 +700,17 @@ onMounted(() => {
 
     <!-- 创建学员对话框 -->
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="500px">
-      <el-form :model="formData" label-width="100px">
-        <el-form-item label="姓名" required>
+      <el-form :model="formData" :rules="formRules" ref="formRef" label-width="100px">
+        <el-form-item label="姓名" prop="name" required>
           <el-input v-model="formData.name" />
         </el-form-item>
-        <el-form-item label="手机号" required>
+        <el-form-item label="手机号" prop="phone" required>
           <el-input v-model="formData.phone" />
         </el-form-item>
-        <el-form-item label="邮箱">
+        <el-form-item label="邮箱" prop="email">
           <el-input v-model="formData.email" />
         </el-form-item>
-        <el-form-item label="课程" required>
-          <template v-if="dialogType === 'create'">
-            <el-select v-model="formData.lessonId" placeholder="请选择课程" @change="handleLessonChange">
-              <el-option v-for="lesson in lessonList" :key="lesson._id" :label="lesson.name" :value="lesson._id" />
-            </el-select>
-          </template>
-          <template v-else>
-            <div>{{ selectedLesson.name }}</div>
-          </template>
-        </el-form-item>
-        <!-- 选择课程后展示课程信息 -->
-        <template v-if="selectedLesson">
-          <el-form-item label="课程类型">
-            <el-tag>{{ selectedLesson.type === 'private' ? '一对一' : '班课' }}</el-tag>
-          </el-form-item>
-          <el-form-item label="课程描述">
-            <div class="lesson-desc">{{ selectedLesson.description || '暂无描述' }}</div>
-          </el-form-item>
-          <el-form-item label="课程价格">
-            <div class="lesson-price">¥{{ selectedLesson.price }}</div>
-          </el-form-item>
-          <el-form-item label="课时数">
-            {{ selectedLesson.totalSessions }}节课/每节{{ selectedLesson.minutesPerSession }}分钟
-          </el-form-item>
-          <!-- 更新时显示剩余课时 -->
-          <template v-if="dialogType === 'update'">
-            <el-form-item label="剩余课时">
-              <el-tag :type="formData.remainingSessions > 0 ? 'success' : 'danger'">
-                {{ formData.remainingSessions }}/{{ formData.totalSessions }}
-              </el-tag>
-            </el-form-item>
-          </template>
-        </template>
-        <el-form-item label="备注">
+        <el-form-item label="备注" prop="remark">
           <el-input v-model="formData.remark" type="textarea" :rows="3" />
         </el-form-item>
       </el-form>
@@ -765,6 +798,23 @@ onMounted(() => {
 
     <!-- 上课记录对话框 -->
     <el-dialog v-model="recordsDialogVisible" title="账户记录" width="800px">
+      <!-- 添加筛选按钮 -->
+      <div class="filter-buttons">
+        <el-button-group>
+          <el-button :type="recordsQuery.type === '' ? 'primary' : 'default'" @click="handleFilterRecords('')">
+            全部记录
+          </el-button>
+          <el-button :type="recordsQuery.type === 'attendance' ? 'primary' : 'default'"
+            @click="handleFilterRecords('attendance')">
+            签到记录
+          </el-button>
+          <el-button :type="recordsQuery.type === 'recharge' ? 'primary' : 'default'"
+            @click="handleFilterRecords('recharge')">
+            充值记录
+          </el-button>
+        </el-button-group>
+      </div>
+
       <div v-loading="recordsLoading">
         <el-table :data="recordsList" style="width: 100%">
           <el-table-column prop="recordTime" label="时间" width="180">
@@ -806,7 +856,8 @@ onMounted(() => {
         <div class="pagination-wrapper">
           <el-pagination v-model:current-page="recordsQuery.page" v-model:page-size="recordsQuery.limit"
             :total="recordsTotal" :page-sizes="[10, 20, 50]" small background layout="total, sizes, prev, pager, next"
-            @size-change="getRecords" @current-change="getRecords" />
+            @size-change="() => currentStudent.value && getRecords(currentStudent.value._id)"
+            @current-change="() => currentStudent.value && getRecords(currentStudent.value._id)" />
         </div>
       </div>
     </el-dialog>
@@ -842,7 +893,7 @@ onMounted(() => {
           <div class="balance-info">
             当前余额：
             <span :class="(currentStudent?.balance || 0) >= 0 ? 'text-success' : 'text-danger'">
-              ¥{{ (currentStudent?.balance || 0).toFixed(2) }}
+              ¥ {{ (currentStudent?.balance || 0).toFixed(2) }}
             </span>
           </div>
         </div>
@@ -862,7 +913,9 @@ onMounted(() => {
       <div class="stat-cards">
         <div class="stat-card">
           <div class="stat-icon success">
-            <el-icon><Plus /></el-icon>
+            <el-icon>
+              <Plus />
+            </el-icon>
           </div>
           <div class="stat-info">
             <div class="stat-label">充值总额</div>
@@ -871,7 +924,9 @@ onMounted(() => {
         </div>
         <div class="stat-card">
           <div class="stat-icon danger">
-            <el-icon><Minus /></el-icon>
+            <el-icon>
+              <Minus />
+            </el-icon>
           </div>
           <div class="stat-info">
             <div class="stat-label">消费总额</div>
@@ -880,7 +935,9 @@ onMounted(() => {
         </div>
         <div class="stat-card">
           <div class="stat-icon info">
-            <el-icon><Timer /></el-icon>
+            <el-icon>
+              <Minus />
+            </el-icon>
           </div>
           <div class="stat-info">
             <div class="stat-label">总课时</div>
@@ -1065,5 +1122,38 @@ onMounted(() => {
       color: var(--el-text-color-primary);
     }
   }
+}
+
+.balance-text {
+  font-weight: bold;
+  font-size: 14px;
+
+  &.balance-positive {
+    color: var(--el-color-success);
+  }
+
+  &.balance-negative {
+    color: var(--el-color-danger);
+    font-size: 16px; // 负数时字体稍大
+    animation: flash 2s infinite; // 添加闪烁动画
+  }
+}
+
+@keyframes flash {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.filter-buttons {
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: center;
 }
 </style>

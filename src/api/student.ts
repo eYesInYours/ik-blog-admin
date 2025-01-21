@@ -80,15 +80,10 @@ export const studentApi = {
   },
 
   // 创建学员
-  create(data: {
-    name: string
-    phone: string
-    email?: string
-    remark?: string
-  }) {
+  create: (data: any) => {
     return request<ApiResponse<Student>>({
-      url: "/students",
-      method: "POST",
+      url: '/students',
+      method: 'post',
       data
     })
   },
@@ -171,6 +166,22 @@ export const studentApi = {
       url: `/students/${studentId}/analysis`,
       method: 'GET',
       params
+    })
+  },
+
+  // 恢复学员
+  restore(id: string) {
+    return request<ApiResponse<void>>({
+      url: `/students/${id}/restore`,
+      method: 'PUT'
+    })
+  },
+
+  // 彻底删除学员
+  permanentDelete(id: string) {
+    return request<ApiResponse<void>>({
+      url: `/students/${id}/permanent`,
+      method: 'DELETE'
     })
   }
 }

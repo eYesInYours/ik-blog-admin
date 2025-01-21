@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue"
 import { ElMessage, ElMessageBox } from "element-plus"
-import { Search, Plus } from "@element-plus/icons-vue"
+import { Search, Plus, Operation } from "@element-plus/icons-vue"
 import { lessonApi } from "@/api/lesson"
+import type { ElTable } from 'element-plus'
 
 interface Lesson {
   _id: string
@@ -16,6 +17,7 @@ interface Lesson {
   cover: string
   status: 'active' | 'inactive'
   createdAt: string
+  stage: string
 }
 
 // 表格数据
@@ -28,6 +30,8 @@ const queryParams = ref({
   page: 1,
   limit: 10,
   keyword: "",
+  type: "",
+  stage: "",
   status: ""
 })
 
@@ -52,15 +56,43 @@ const typeOptions = [
   { label: '班课', value: 'group' }
 ]
 
+// 课程阶段选项
+const stageOptions = [
+  { label: '入门', value: 'basic' },
+  { label: '提高', value: 'intermediate' },
+  { label: '普及', value: 'advanced' }
+]
+
 // 获取类型显示文本
 const getTypeText = (type: string) => {
   return type === 'private' ? '一对一' : '班课'
+}
+
+// 获取阶段显示文本
+const getStageText = (stage: string) => {
+  const map: Record<string, string> = {
+    basic: '入门',
+    intermediate: '提高',
+    advanced: '普及'
+  }
+  return map[stage] || stage
+}
+
+// 获取阶段标签类型
+const getStageType = (stage: string) => {
+  const map: Record<string, string> = {
+    basic: 'info',
+    intermediate: 'warning',
+    advanced: 'success'
+  }
+  return map[stage] || 'info'
 }
 
 // 表单数据
 const formData = ref<Partial<Lesson>>({
   name: "",
   type: "private",
+  stage: "basic",
   totalMinutes: 0,
   totalSessions: 0,
   minutesPerSession: 0,
@@ -82,6 +114,7 @@ const handleCreate = () => {
   formData.value = {
     name: "",
     type: "private",
+    stage: "basic",
     totalMinutes: 0,
     totalSessions: 0,
     minutesPerSession: 0,
@@ -139,13 +172,66 @@ const handleDelete = async (id: string) => {
 // 更新课程状态
 const handleStatusChange = async (row: Lesson) => {
   try {
-    const newStatus = row.status === "active" ? "inactive" : "active"
-    await lessonApi.lesson.updateStatus(row._id, newStatus)
+    await lessonApi.lesson.updateStatus(row._id, row.status)
     ElMessage.success("状态更新成功")
-    getLessons()
   } catch (error) {
+    // 如果更新失败，恢复原来的状态
+    row.status = row.status === 'active' ? 'inactive' : 'active'
     ElMessage.error("状态更新失败")
     console.error(error)
+  }
+}
+
+// 格式化时间
+const formatDateTime = (dateStr: string) => {
+  if (!dateStr) return ''
+  const date = new Date(dateStr)
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+// 拖拽相关
+const tableRef = ref<InstanceType<typeof ElTable>>()
+const dragRow = ref<any>(null)
+const dragging = ref(false)
+
+const handleDragStart = (row: any) => {
+  dragRow.value = row
+  dragging.value = true
+  const tr = document.querySelector(`tr[data-row-key="${row._id}"]`)
+  tr?.classList.add('dragging')
+}
+
+const handleDrop = async (row: any) => {
+  if (!dragRow.value || dragRow.value._id === row._id) {
+    return
+  }
+
+  try {
+    const currentIndex = tableData.value.findIndex(item => item._id === dragRow.value._id)
+    const targetIndex = tableData.value.findIndex(item => item._id === row._id)
+
+    await lessonApi.lesson.updateSort({
+      id: dragRow.value._id,
+      targetId: row._id,
+      type: targetIndex > currentIndex ? 'after' : 'before'
+    })
+
+    await getLessons()
+    ElMessage.success('排序更新成功')
+  } catch (error) {
+    console.error('排序更新失败:', error)
+    ElMessage.error('排序更新失败')
+  } finally {
+    const tr = document.querySelector(`tr[data-row-key="${dragRow.value._id}"]`)
+    tr?.classList.remove('dragging')
+    dragRow.value = null
+    dragging.value = false
   }
 }
 
@@ -167,8 +253,46 @@ onMounted(() => {
             @keyup.enter="getLessons"
           />
         </el-form-item>
+        <el-form-item label="课程类型">
+          <el-select
+            style="width: 160px"
+            v-model="queryParams.type"
+            placeholder="请选择课程类型"
+            clearable
+          >
+            <el-option label="全部" value="" />
+            <el-option
+              v-for="option in typeOptions"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="课程阶段">
+          <el-select
+            style="width: 160px"
+            v-model="queryParams.stage"
+            placeholder="请选择课程阶段"
+            clearable
+          >
+            <el-option label="全部" value="" />
+            <el-option
+              v-for="option in stageOptions"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item label="状态">
-          <el-select v-model="queryParams.status" placeholder="请选择状态" clearable>
+          <el-select
+            style="width: 160px"
+            v-model="queryParams.status"
+            placeholder="请选择状态"
+            clearable
+          >
+            <el-option label="全部" value="" />
             <el-option label="启用" value="active" />
             <el-option label="禁用" value="inactive" />
           </el-select>
@@ -186,11 +310,39 @@ onMounted(() => {
 
     <!-- 表格 -->
     <el-card v-loading="loading">
-      <el-table :data="tableData" style="width: 100%">
+      <el-table
+        ref="tableRef"
+        :data="tableData"
+        style="width: 100%"
+        row-key="_id"
+      >
+        <el-table-column width="60" class-name="drag-column">
+          <template #default="{ row }">
+            <div
+              class="drag-cell"
+              draggable="true"
+              @dragstart="handleDragStart(row)"
+              @dragover.prevent
+              @dragenter.prevent
+              @drop="handleDrop(row)"
+            >
+              <el-icon class="drag-handle">
+                <Operation />
+              </el-icon>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column prop="name" label="课程名称" />
         <el-table-column prop="type" label="课程类型">
           <template #default="{ row }">
             <el-tag>{{ getTypeText(row.type) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="stage" label="课程阶段">
+          <template #default="{ row }">
+            <el-tag :type="getStageType(row.stage)">
+              {{ getStageText(row.stage) }}
+            </el-tag>
           </template>
         </el-table-column>
         <el-table-column label="课时信息">
@@ -200,17 +352,25 @@ onMounted(() => {
             <div class="text-price">课时单价：¥{{ row.price.toFixed(2) }}</div>
           </template>
         </el-table-column>
-        <el-table-column prop="status" label="状态">
+        <el-table-column label="状态" width="180">
           <template #default="{ row }">
-            <el-switch
-              v-model="row.status"
-              :active-value="'active'"
-              :inactive-value="'inactive'"
-              @change="(val) => handleStatusChange(row._id, val)"
-            />
+            <div class="status-cell">
+              <el-switch
+                v-model="row.status"
+                :active-value="'active'"
+                :inactive-value="'inactive'"
+                :active-text="'启用'"
+                :inactive-text="'禁用'"
+                @change="() => handleStatusChange(row)"
+              />
+            </div>
           </template>
         </el-table-column>
-        <el-table-column prop="createdAt" label="创建时间" width="180" />
+        <el-table-column prop="createdAt" label="创建时间" width="180">
+          <template #default="{ row }">
+            {{ formatDateTime(row.createdAt) }}
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" size="small" @click="handleEdit(row)">
@@ -261,13 +421,23 @@ onMounted(() => {
             />
           </el-select>
         </el-form-item>
+        <el-form-item label="课程阶段" required>
+          <el-select v-model="formData.stage">
+            <el-option
+              v-for="option in stageOptions"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item label="总课时" required>
           <el-input-number v-model="formData.totalSessions" :min="0" />
         </el-form-item>
         <el-form-item label="每节时长" required>
           <el-input-number v-model="formData.minutesPerSession" :min="0" />
         </el-form-item>
-        <el-form-item label="课程价格" required>
+        <el-form-item label="课时单价" required>
           <el-input-number v-model="formData.price" :min="0" :precision="2" />
         </el-form-item>
         <el-form-item label="课程封面">
@@ -342,5 +512,66 @@ onMounted(() => {
   color: #f56c6c;
   font-weight: bold;
   margin-top: 4px;
+}
+
+.drag-handle {
+  color: var(--el-text-color-secondary);
+  font-size: 20px;
+}
+
+.el-table {
+  :deep(tr.dragging) {
+    background-color: var(--el-fill-color-lighter);
+    opacity: 0.5;
+  }
+}
+
+.drag-column {
+  :deep(.cell) {
+    padding: 0;
+  }
+}
+
+.drag-cell {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: move;
+  padding: 8px 0;
+  transition: all 0.3s;
+
+  &:hover {
+    background-color: var(--el-fill-color-light);
+
+    .drag-handle {
+      color: var(--el-text-color-primary);
+    }
+  }
+}
+
+.status-cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  .status-text {
+    min-width: 32px;
+    font-size: 14px;
+    color: var(--el-text-color-secondary);
+  }
+
+  :deep(.el-switch) {
+    --el-switch-on-color: var(--el-color-success);
+    --el-switch-off-color: var(--el-color-danger);
+  }
+
+  :deep(.el-switch__label) {
+    color: var(--el-text-color-regular);
+
+    &.is-active {
+      color: var(--el-color-primary);
+    }
+  }
 }
 </style>

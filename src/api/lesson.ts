@@ -112,6 +112,19 @@ export const lessonApi = {
         method: "PATCH",
         data: { status }
       })
+    },
+
+    // 更新课程排序
+    updateSort: (data: {
+      id: string
+      targetId: string
+      type: 'before' | 'after'
+    }) => {
+      return request({
+        url: '/lessons/sort',
+        method: 'post',
+        data
+      })
     }
   },
 

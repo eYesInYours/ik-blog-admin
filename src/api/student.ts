@@ -183,5 +183,40 @@ export const studentApi = {
       url: `/students/${id}/permanent`,
       method: 'DELETE'
     })
+  },
+
+  // 修改记录
+  updateRecord(id: string, data: {
+    sessions?: number
+    amount?: number
+  }) {
+    return request<ApiResponse<Record>>({
+      url: `/students/records/${id}`,
+      method: 'PUT',
+      data
+    })
+  },
+
+  // 获取收入分析数据
+  getIncomeAnalysis(params: {
+    timeRange: 'week' | 'month' | 'year'
+    date?: string  // 添加日期参数
+  }) {
+    return request<ApiResponse<{
+      summary: {
+        totalRecharge: number
+        totalConsumption: number
+        profit: number
+      }
+      trend: {
+        dates: string[]
+        recharge: number[]
+        consumption: number[]
+      }
+    }>>({
+      url: '/students/income/analysis',
+      method: 'GET',
+      params
+    })
   }
 }

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch } from "vue"
 import { ElMessage, ElMessageBox } from "element-plus"
-import { Search, Plus, Minus } from "@element-plus/icons-vue"
+import { Search, Plus, Minus, ArrowRight } from "@element-plus/icons-vue"
 import { studentApi } from "@/api/student"
 import { lessonApi } from "@/api/lesson"
 import * as echarts from 'echarts'
+import dayjs from 'dayjs'
 
 // 表格数据
 const tableData = ref([])
@@ -229,6 +230,7 @@ const rechargeForm = ref({
 
 // 打开充值对话框
 const handleRecharge = (student: any) => {
+  currentStudent.value = student
   rechargeForm.value = {
     studentId: student._id,
     amount: 0,
@@ -601,6 +603,86 @@ const handlePermanentDelete = async (id: string) => {
     ElMessage.error('删除失败')
   }
 }
+
+// 修改记录相关
+const editRecordDialogVisible = ref(false)
+const editRecordForm = ref({
+  id: '',
+  type: '',
+  lessonName: '',
+  lessonPrice: 0,      // 课时单价
+  sessions: 0,
+  amount: 0,
+  originalAmount: 0,
+  calculatedAmount: 0,
+  modifyHistory: []
+})
+
+// 处理充值金额变化
+const handleRechargeAmountChange = (value: number | null) => {
+  if (value === null) {
+    value = 0
+  }
+  editRecordForm.value.calculatedAmount = value
+}
+
+// 打开修改记录对话框
+const handleEditRecord = (record: any) => {
+  const lesson = record.lessonId
+  editRecordForm.value = {
+    id: record._id,
+    type: record.type,
+    lessonName: lesson?.name || '',
+    lessonPrice: lesson?.price || 0,
+    sessions: Math.abs(record.sessions),
+    amount: Math.abs(record.amount),
+    originalAmount: record.amount,
+    calculatedAmount: record.amount,
+    modifyHistory: record.modifyHistory || []
+  }
+  editRecordDialogVisible.value = true
+}
+
+// 修改记录时重新计算金额
+const calculateModifiedAmount = (value: number | null) => {
+  if (value === null) {
+    value = 0
+  }
+  const amount = -(value * editRecordForm.value.lessonPrice)
+  editRecordForm.value.calculatedAmount = Number(amount.toFixed(2))
+}
+
+// 提交修改记录
+const handleEditRecordSubmit = async () => {
+  try {
+    if (editRecordForm.value.type === 'attendance') {
+      await studentApi.updateRecord(editRecordForm.value.id, {
+        sessions: editRecordForm.value.sessions
+      })
+    } else {
+      await studentApi.updateRecord(editRecordForm.value.id, {
+        amount: editRecordForm.value.amount
+      })
+    }
+
+    ElMessage.success('修改成功')
+    editRecordDialogVisible.value = false
+
+    // 刷新记录列表和学员列表
+    if (currentStudent.value?._id) {
+      await getRecords(currentStudent.value._id)  // 刷新记录列表
+    }
+    await getStudents()  // 刷新学员列表
+  } catch (error) {
+    console.error('修改记录失败:', error)
+    ElMessage.error('修改失败')
+  }
+}
+
+// 格式化修改历史时间
+const formatHistoryTime = (dateStr: string) => {
+  return dayjs(dateStr).format('YYYY-MM-DD HH:mm:ss')
+}
 </script>
 
 <template>
@@ -660,7 +742,7 @@ const handlePermanentDelete = async (id: string) => {
             <template v-if="!row.deleted">
               <el-button type="primary" size="small" @click="handleAttendance(row)">
                 签到
-              </el-button>
+            </el-button>
               <el-button type="success" size="small" @click="handleRecharge(row)">
                 充值
               </el-button>
@@ -851,6 +933,17 @@ const handlePermanentDelete = async (id: string) => {
               <span v-if="row.remark">{{ row.remark }}</span>
             </template>
           </el-table-column>
+          <el-table-column label="操作" width="150" fixed="right">
+            <template #default="{ row }">
+              <el-button
+                type="primary"
+                size="small"
+                @click="handleEditRecord(row)"
+              >
+                修改
+              </el-button>
+            </template>
+          </el-table-column>
         </el-table>
         <!-- 记录分页 -->
         <div class="pagination-wrapper">
@@ -957,6 +1050,113 @@ const handlePermanentDelete = async (id: string) => {
           <div ref="sessionsChartRef" style="height: 300px"></div>
         </el-card>
       </div>
+    </el-dialog>
+
+    <!-- 修改记录对话框 -->
+    <el-dialog
+      v-model="editRecordDialogVisible"
+      :title="editRecordForm.type === 'attendance' ? '修改签到记录' : '修改充值记录'"
+      width="500px"
+    >
+      <el-form label-width="100px">
+        <template v-if="editRecordForm.type === 'attendance'">
+          <!-- 签到记录修改界面 -->
+          <div class="course-info">
+            <div class="info-item">
+              <span class="label">课程:</span>
+              <span class="value">{{ editRecordForm.lessonName }}</span>
+            </div>
+            <div class="info-item">
+              <span class="label">单课时价格:</span>
+              <span class="value price">¥{{ editRecordForm.lessonPrice }}</span>
+            </div>
+          </div>
+
+          <el-form-item label="课时">
+            <el-input-number
+              v-model="editRecordForm.sessions"
+              :min="1"
+              @input="calculateModifiedAmount"
+          />
+        </el-form-item>
+
+          <!-- 显示计算后的金额 -->
+          <div class="amount-preview" v-if="editRecordForm.calculatedAmount !== editRecordForm.originalAmount">
+            <div class="amount-change">
+              <span class="old-amount">原扣费金额: ¥{{ Math.abs(editRecordForm.originalAmount) }}</span>
+              <el-icon class="arrow"><ArrowRight /></el-icon>
+              <span class="new-amount">新扣费金额: ¥{{ Math.abs(editRecordForm.calculatedAmount) }}</span>
+            </div>
+            <div class="diff-amount" :class="{
+              'positive': Math.abs(editRecordForm.calculatedAmount) < Math.abs(editRecordForm.originalAmount),
+              'negative': Math.abs(editRecordForm.calculatedAmount) > Math.abs(editRecordForm.originalAmount)
+            }">
+              {{ Math.abs(editRecordForm.calculatedAmount) > Math.abs(editRecordForm.originalAmount) ? '多扣' : '少扣' }}
+              ¥{{ Math.abs(Math.abs(editRecordForm.calculatedAmount) - Math.abs(editRecordForm.originalAmount)).toFixed(2) }}
+            </div>
+          </div>
+        </template>
+
+        <template v-else>
+          <!-- 充值记录修改界面 -->
+          <el-form-item label="金额">
+            <el-input-number
+              v-model="editRecordForm.amount"
+              :precision="2"
+              :step="100"
+              @input="handleRechargeAmountChange"
+          />
+        </el-form-item>
+
+          <!-- 显示金额变化 -->
+          <div class="amount-preview" v-if="editRecordForm.calculatedAmount !== editRecordForm.originalAmount">
+            <div class="amount-change">
+              <span class="old-amount">原充值金额: ¥{{ Math.abs(editRecordForm.originalAmount) }}</span>
+              <el-icon class="arrow"><ArrowRight /></el-icon>
+              <span class="new-amount">新充值金额: ¥{{ Math.abs(editRecordForm.calculatedAmount) }}</span>
+            </div>
+            <div class="diff-amount" :class="{
+              'positive': Math.abs(editRecordForm.calculatedAmount) > Math.abs(editRecordForm.originalAmount),
+              'negative': Math.abs(editRecordForm.calculatedAmount) < Math.abs(editRecordForm.originalAmount)
+            }">
+              {{ Math.abs(editRecordForm.calculatedAmount) > Math.abs(editRecordForm.originalAmount) ? '增加' : '减少' }}
+              ¥{{ Math.abs(Math.abs(editRecordForm.calculatedAmount) - Math.abs(editRecordForm.originalAmount)).toFixed(2) }}
+            </div>
+          </div>
+        </template>
+
+        <!-- 显示修改历史 -->
+        <div v-if="editRecordForm.modifyHistory?.length" class="modify-history">
+          <div class="history-title">修改历史</div>
+          <el-timeline>
+            <el-timeline-item
+              v-for="(history, index) in editRecordForm.modifyHistory"
+              :key="index"
+              :timestamp="formatHistoryTime(history.modifiedAt)"
+              size="small"
+            >
+              <div class="history-item">
+                <template v-if="editRecordForm.type === 'attendance'">
+                  <div class="history-changes">
+                    <div>课时: {{ Math.abs(history.before.sessions) }} -> {{ Math.abs(history.after.sessions) }}</div>
+                    <div>金额: ¥{{ Math.abs(history.before.amount) }} -> ¥{{ Math.abs(history.after.amount) }}</div>
+                  </div>
+                </template>
+                <template v-else>
+                  <div class="history-changes">
+                    <div>金额: ¥{{ history.before.amount }} -> ¥{{ history.after.amount }}</div>
+                  </div>
+                </template>
+              </div>
+            </el-timeline-item>
+          </el-timeline>
+        </div>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="editRecordDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleEditRecordSubmit">确定</el-button>
+      </template>
     </el-dialog>
   </div>
 </template>
@@ -1140,7 +1340,6 @@ const handlePermanentDelete = async (id: string) => {
 }
 
 @keyframes flash {
-
   0%,
   100% {
     opacity: 1;
@@ -1155,5 +1354,113 @@ const handlePermanentDelete = async (id: string) => {
   margin-bottom: 16px;
   display: flex;
   justify-content: center;
+}
+
+.course-info {
+  background-color: var(--el-fill-color-light);
+  padding: 12px 16px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+
+  .info-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+
+    .label {
+      color: var(--el-text-color-secondary);
+      width: 100px;
+    }
+
+    .value {
+      color: var(--el-text-color-primary);
+      font-weight: 500;
+
+      &.price {
+        color: var(--el-color-danger);
+      }
+    }
+  }
+}
+
+.amount-preview {
+  margin: 16px 0;
+  padding: 12px 16px;
+  background-color: var(--el-fill-color-lighter);
+  border-radius: 4px;
+
+  .amount-change {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+
+    .arrow {
+      color: var(--el-text-color-secondary);
+    }
+
+    .old-amount {
+      color: var(--el-text-color-secondary);
+      text-decoration: line-through;
+    }
+
+    .new-amount {
+      color: var(--el-text-color-primary);
+      font-weight: 500;
+    }
+  }
+
+  .diff-amount {
+    font-size: 13px;
+
+    &.positive {
+      color: var(--el-color-success);
+    }
+
+    &.negative {
+      color: var(--el-color-danger);
+    }
+  }
+}
+
+.modify-history {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--el-border-color-lighter);
+
+  .history-title {
+    font-size: 14px;
+    color: var(--el-text-color-primary);
+    font-weight: 500;
+    margin-bottom: 16px;
+  }
+
+  .history-item {
+    .history-changes {
+      font-size: 13px;
+      color: var(--el-text-color-regular);
+
+      > div {
+        line-height: 1.8;
+      }
+    }
+  }
+
+  :deep(.el-timeline-item__timestamp) {
+    font-size: 12px;
+    color: var(--el-text-color-secondary);
+  }
+
+  :deep(.el-timeline-item__node) {
+    background-color: var(--el-color-primary-light-7);
+  }
+
+  :deep(.el-timeline-item__tail) {
+    border-left-color: var(--el-border-color-lighter);
+  }
 }
 </style>

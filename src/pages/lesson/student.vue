@@ -160,7 +160,7 @@ const currentStudent = ref<any>(null)
 const attendanceForm = ref({
   studentId: "",
   lessonId: "",
-  attendanceTime: new Date().toISOString().slice(0, 19).replace('T', ' '),
+  attendanceTime: dayjs().format('YYYY-MM-DD HH:mm:ss'),
   sessions: 1,
   amount: 0,
   remark: ""
@@ -188,7 +188,7 @@ const handleAttendance = (student: any) => {
   attendanceForm.value = {
     studentId: student._id,
     lessonId: "",
-    attendanceTime: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    attendanceTime: dayjs().format('YYYY-MM-DD HH:mm:ss'),
     sessions: 1,
     amount: 0,
     remark: ""
@@ -364,19 +364,9 @@ const handleDelete = async (id: string) => {
 }
 
 // 格式化时间的函数
-const formatDateTime = (time: string) => {
-  if (!time) return '';
-  const date = new Date(time);
-  if (isNaN(date.getTime())) return '';
-
-  return date.toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false
-  });
+const formatDateTime = (dateStr: string) => {
+  if (!dateStr) return '-'
+  return dayjs(dateStr).format('YYYY-MM-DD HH:mm:ss')
 }
 
 // 添加分析对话框
@@ -610,11 +600,12 @@ const editRecordForm = ref({
   id: '',
   type: '',
   lessonName: '',
-  lessonPrice: 0,      // 课时单价
+  lessonPrice: 0,
   sessions: 0,
   amount: 0,
   originalAmount: 0,
   calculatedAmount: 0,
+  recordTime: '',
   modifyHistory: []
 })
 
@@ -628,16 +619,16 @@ const handleRechargeAmountChange = (value: number | null) => {
 
 // 打开修改记录对话框
 const handleEditRecord = (record: any) => {
-  const lesson = record.lessonId
   editRecordForm.value = {
     id: record._id,
     type: record.type,
-    lessonName: lesson?.name || '',
-    lessonPrice: lesson?.price || 0,
+    lessonName: record?.lessonId?.name,
+    lessonPrice: record?.lessonId?.price,
     sessions: Math.abs(record.sessions),
     amount: Math.abs(record.amount),
     originalAmount: record.amount,
     calculatedAmount: record.amount,
+    recordTime: record.recordTime ? dayjs(record.recordTime).format('YYYY-MM-DD HH:mm:ss') : dayjs().format('YYYY-MM-DD HH:mm:ss'),
     modifyHistory: record.modifyHistory || []
   }
   editRecordDialogVisible.value = true
@@ -655,24 +646,26 @@ const calculateModifiedAmount = (value: number | null) => {
 // 提交修改记录
 const handleEditRecordSubmit = async () => {
   try {
+    const data: any = {}
+
     if (editRecordForm.value.type === 'attendance') {
-      await studentApi.updateRecord(editRecordForm.value.id, {
-        sessions: editRecordForm.value.sessions
-      })
+      data.sessions = editRecordForm.value.sessions
+      data.recordTime = editRecordForm.value.recordTime
+      data.amount = -(editRecordForm.value.sessions * editRecordForm.value.lessonPrice)
     } else {
-      await studentApi.updateRecord(editRecordForm.value.id, {
-        amount: editRecordForm.value.amount
-      })
+      data.amount = editRecordForm.value.amount
     }
 
+    await studentApi.updateRecord(editRecordForm.value.id, data)
     ElMessage.success('修改成功')
     editRecordDialogVisible.value = false
 
-    // 刷新记录列表和学员列表
+    // 刷新记录列表
     if (currentStudent.value?._id) {
-      await getRecords(currentStudent.value._id)  // 刷新记录列表
+      await getRecords(currentStudent.value._id)
     }
-    await getStudents()  // 刷新学员列表
+    // 刷新学员列表
+    getStudents()
   } catch (error) {
     console.error('修改记录失败:', error)
     ElMessage.error('修改失败')
@@ -736,7 +729,11 @@ const formatHistoryTime = (dateStr: string) => {
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="createdAt" label="创建时间" width="180" />
+        <el-table-column prop="createdAt" label="创建时间" width="200">
+          <template #default="{ row }">
+            {{ formatDateTime(row.createdAt) }}
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="460" fixed="right">
           <template #default="{ row }">
             <template v-if="!row.deleted">
@@ -828,9 +825,14 @@ const formatHistoryTime = (dateStr: string) => {
           </el-select>
         </el-form-item>
         <el-form-item label="签到时间" required>
-          <el-date-picker v-model="attendanceForm.attendanceTime" type="datetime" placeholder="选择日期时间"
-            format="YYYY-MM-DD HH:mm" value-format="YYYY-MM-DD HH:mm:ss"
-            :default-time="new Date(2000, 1, 1, new Date().getHours(), new Date().getMinutes(), 0)" />
+          <el-date-picker
+            v-model="attendanceForm.attendanceTime"
+            type="datetime"
+            placeholder="选择日期时间"
+            format="YYYY-MM-DD HH:mm"
+            value-format="YYYY-MM-DD HH:mm:ss"
+            :default-time="new Date(2000, 1, 1, new Date().getHours(), new Date().getMinutes(), 0)"
+          />
         </el-form-item>
         <el-form-item label="课时数" required>
           <el-input-number v-model="attendanceForm.sessions" :min="1" @change="calculateAmount" />
@@ -899,9 +901,16 @@ const formatHistoryTime = (dateStr: string) => {
 
       <div v-loading="recordsLoading">
         <el-table :data="recordsList" style="width: 100%">
-          <el-table-column prop="recordTime" label="时间" width="180">
+          <el-table-column prop="createdAt" label="创建时间" width="180">
             <template #default="{ row }">
               <el-text>
+                {{ formatDateTime(row.createdAt) }}
+              </el-text>
+            </template>
+          </el-table-column>
+          <el-table-column label="签到时间" width="180">
+            <template #default="{ row }">
+              <el-text v-if="row.type === 'attendance'">
                 {{ formatDateTime(row.recordTime) }}
               </el-text>
             </template>
@@ -1095,6 +1104,18 @@ const formatHistoryTime = (dateStr: string) => {
               ¥{{ Math.abs(Math.abs(editRecordForm.calculatedAmount) - Math.abs(editRecordForm.originalAmount)).toFixed(2) }}
             </div>
           </div>
+
+          <el-form-item label="签到时间">
+          <el-date-picker
+              v-model="editRecordForm.recordTime"
+              type="datetime"
+              placeholder="选择日期时间"
+              format="YYYY-MM-DD HH:mm"
+              value-format="YYYY-MM-DD HH:mm:ss"
+              :default-time="dayjs().format('HH:mm:ss')"
+              :disabledDate="(time) => time.getTime() > Date.now()"
+          />
+        </el-form-item>
         </template>
 
         <template v-else>

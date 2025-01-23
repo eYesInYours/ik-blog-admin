@@ -2,10 +2,10 @@
 import { useUserStore } from "@/pinia/stores/user"
 import Admin from "./components/Admin.vue"
 import Editor from "./components/Editor.vue"
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { studentApi } from '@/api/student'
 import * as echarts from 'echarts'
-import { Plus, Minus, Money } from '@element-plus/icons-vue'
+import { Plus, Minus, Money, QuestionFilled } from '@element-plus/icons-vue'
 
 const userStore = useUserStore()
 const isAdmin = userStore.roles.includes("admin")
@@ -15,10 +15,35 @@ const selectedDate = ref<Date>(new Date())
 const chartRef = ref<HTMLElement>()
 let chart: echarts.ECharts | null = null
 
-const summary = ref({
-  totalRecharge: 0,
-  totalConsumption: 0,
-  profit: 0
+const incomeData = ref({
+  summary: {
+    totalRecharge: 0,
+    totalConsumption: 0,
+    profit: 0,
+    pendingIncome: 0,
+    totalSessions: 0
+  },
+  trend: {
+    dates: [],
+    recharge: [],
+    consumption: [],
+    sessions: []
+  }
+})
+
+const chartMetrics = ref(['recharge', 'consumption', 'sessions'])
+
+// 根据时间范围设置日期选择器类型
+const datePickerType = computed(() => {
+  switch (timeRange.value) {
+    case 'week':
+    case 'month':
+      return 'month'
+    case 'year':
+      return 'year'
+    default:
+      return 'month'
+  }
 })
 
 // 处理时间范围变化
@@ -34,7 +59,7 @@ const getAnalysisData = async () => {
       timeRange: timeRange.value,
       date: selectedDate.value?.toISOString()
     })
-    summary.value = data.summary
+    incomeData.value = data
     updateChart(data.trend)
   } catch (error) {
     console.error('获取分析数据失败:', error)
@@ -45,49 +70,86 @@ const getAnalysisData = async () => {
 const updateChart = (data: any) => {
   if (!chart) return
 
+  const series = []
+
+  if (chartMetrics.value.includes('recharge')) {
+    series.push({
+      name: '充值金额',
+      type: 'bar',
+      data: data.recharge,
+      itemStyle: {
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: '#67C23A' },
+          { offset: 1, color: '#95D475' }
+        ])
+      }
+    })
+  }
+
+  if (chartMetrics.value.includes('consumption')) {
+    series.push({
+      name: '课时费',
+      type: 'bar',
+      data: data.consumption,
+      itemStyle: {
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: '#409EFF' },
+          { offset: 1, color: '#79BBFF' }
+        ])
+      }
+    })
+  }
+
+  if (chartMetrics.value.includes('sessions')) {
+    series.push({
+      name: '课时数',
+      type: 'line',
+      yAxisIndex: 1,
+      data: data.sessions,
+      symbolSize: 8,
+      lineStyle: {
+        width: 3,
+        color: '#E6A23C'
+      },
+      itemStyle: {
+        color: '#E6A23C'
+      }
+    })
+  }
+
   chart.setOption({
     tooltip: {
       trigger: 'axis',
-      axisPointer: {
-        type: 'shadow'
-      }
+      axisPointer: { type: 'cross' }
     },
     legend: {
-      data: ['充值押金', '签到扣费']
+      data: chartMetrics.value.map(metric => ({
+        recharge: '充值金额',
+        consumption: '课时费',
+        sessions: '课时数'
+      }[metric]))
     },
     grid: {
-      left: '3%',
-      right: '4%',
-      bottom: '3%',
-      containLabel: true
+      right: '5%'
     },
     xAxis: {
       type: 'category',
       data: data.dates
     },
-    yAxis: {
-      type: 'value'
-    },
-    series: [
+    yAxis: [
       {
-        name: '充值押金',
-        type: 'bar',
-        stack: 'total',
-        data: data.recharge,
-        itemStyle: {
-          color: '#67c23a'
-        }
+        type: 'value',
+        name: '金额',
+        position: 'left'
       },
       {
-        name: '签到扣费',
-        type: 'bar',
-        stack: 'total',
-        data: data.consumption,
-        itemStyle: {
-          color: '#f56c6c'
-        }
+        type: 'value',
+        name: '课时',
+        position: 'right',
+        splitLine: { show: false }
       }
-    ]
+    ],
+    series
   })
 }
 
@@ -104,6 +166,11 @@ const handleResize = () => {
   chart?.resize()
 }
 
+// 格式化金额
+const formatAmount = (amount: number) => {
+  return amount.toFixed(2)
+}
+
 onMounted(() => {
   initChart()
   window.addEventListener('resize', handleResize)
@@ -116,168 +183,216 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="dashboard">
-    <!-- 统计卡片 -->
-    <div class="stat-cards">
-      <div class="stat-card">
-        <div class="stat-icon info">
-          <el-icon><Plus /></el-icon>
+  <div class="dashboard-container">
+    <!-- 收入统计卡片 -->
+    <div class="stats-cards">
+      <el-card class="stats-card recharge">
+        <template #header>
+          <div class="card-header">
+            <span>总充值金额（押金）</span>
+          </div>
+        </template>
+        <div class="amount">
+          <span class="currency">¥</span>
+          {{ formatAmount(incomeData.summary.totalRecharge) }}
         </div>
-        <div class="stat-info">
-          <div class="stat-label">总充值押金</div>
-          <div class="stat-value text-info">¥{{ summary.totalRecharge.toFixed(2) }}</div>
-        </div>
-      </div>
+      </el-card>
 
-      <div class="stat-card">
-        <div class="stat-icon success">
-          <el-icon><Money /></el-icon>
+      <el-card class="stats-card consumption">
+        <template #header>
+          <div class="card-header">
+            <span>课时费总额（签到扣费）</span>
+          </div>
+        </template>
+        <div class="amount">
+          <span class="currency">¥</span>
+          {{ formatAmount(incomeData.summary.totalConsumption) }}
         </div>
-        <div class="stat-info">
-          <div class="stat-label">课时收入</div>
-          <div class="stat-value text-success">¥{{ summary.profit.toFixed(2) }}</div>
-        </div>
-      </div>
+      </el-card>
 
-      <div class="stat-card">
-        <div class="stat-icon">
-          <el-icon><Minus /></el-icon>
+      <el-card class="stats-card profit">
+        <template #header>
+          <div class="card-header">
+            <span>实际到手收入</span>
+          </div>
+        </template>
+        <div class="amount">
+          <span class="currency">¥</span>
+          {{ formatAmount(incomeData.summary.profit) }}
         </div>
-        <div class="stat-info">
-          <div class="stat-label">签到扣费</div>
-          <div class="stat-value">¥{{ summary.totalConsumption.toFixed(2) }}</div>
+      </el-card>
+
+      <el-card class="stats-card pending">
+        <template #header>
+          <div class="card-header">
+            <span>待收金额</span>
+            <el-tooltip content="学员需要补交的金额" placement="top">
+              <el-icon><QuestionFilled /></el-icon>
+            </el-tooltip>
+          </div>
+        </template>
+        <div class="amount" :class="{ 'highlight': incomeData.summary.pendingIncome > 0 }">
+          <span class="currency">¥</span>
+          {{ formatAmount(incomeData.summary.pendingIncome) }}
         </div>
-      </div>
+      </el-card>
+
+      <el-card class="stats-card sessions">
+        <template #header>
+          <div class="card-header">
+            <span>总课时数</span>
+          </div>
+        </template>
+        <div class="amount">
+          {{ incomeData.summary.totalSessions }}
+          <span class="unit">课时</span>
+        </div>
+      </el-card>
     </div>
 
-    <!-- 时间范围选择 -->
-    <div class="analysis-header">
-      <div class="date-picker-group">
-        <el-radio-group v-model="timeRange" @change="handleTimeRangeChange">
-          <el-radio-button label="week">周</el-radio-button>
-          <el-radio-button label="month">月</el-radio-button>
-          <el-radio-button label="year">年</el-radio-button>
-        </el-radio-group>
-
-        <!-- 根据时间范围显示不同的日期选择器 -->
-        <template v-if="timeRange === 'week'">
-          <el-date-picker
-            v-model="selectedDate"
-            type="week"
-            format="YYYY 第 ww 周"
-            placeholder="选择周"
-            @change="getAnalysisData"
-          />
-        </template>
-
-        <template v-else-if="timeRange === 'month'">
-          <el-date-picker
-            v-model="selectedDate"
-            type="month"
-            placeholder="选择月份"
-            @change="getAnalysisData"
-          />
-        </template>
-
-        <template v-else>
-          <el-date-picker
-            v-model="selectedDate"
-            type="year"
-            placeholder="选择年份"
-            @change="getAnalysisData"
-          />
-        </template>
-      </div>
-    </div>
-
-    <!-- 收入趋势图表 -->
-    <div class="chart-container" ref="chartRef"></div>
+    <!-- 收入趋势图 -->
+    <el-card class="chart-card">
+      <template #header>
+        <div class="card-header">
+          <span>收入与课时趋势</span>
+          <div class="chart-controls">
+            <el-checkbox-group v-model="chartMetrics">
+              <el-checkbox label="recharge">充值金额</el-checkbox>
+              <el-checkbox label="consumption">课时费</el-checkbox>
+              <el-checkbox label="sessions">课时数</el-checkbox>
+            </el-checkbox-group>
+            <div class="date-range">
+              <el-radio-group v-model="timeRange" @change="getAnalysisData">
+                <el-radio-button label="week">周</el-radio-button>
+                <el-radio-button label="month">月</el-radio-button>
+                <el-radio-button label="year">年</el-radio-button>
+              </el-radio-group>
+              <el-date-picker
+                v-model="selectedDate"
+                :type="datePickerType"
+                @change="getAnalysisData"
+              />
+            </div>
+          </div>
+        </div>
+      </template>
+      <div ref="chartRef" style="height: 400px"></div>
+    </el-card>
   </div>
 </template>
 
 <style lang="scss" scoped>
-.dashboard {
-  padding: 24px;
-}
-
-.stat-cards {
-  display: flex;
-  gap: 24px;
-  margin-bottom: 24px;
-}
-
-.stat-card {
-  flex: 1;
-  background: white;
-  border-radius: 8px;
+.dashboard-container {
   padding: 20px;
-  display: flex;
-  align-items: center;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
-}
 
-.stat-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-right: 16px;
-  font-size: 24px;
-  color: white;
+  .stats-cards {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+    margin-bottom: 20px;
 
-  &.success {
-    background: linear-gradient(135deg, #67c23a 0%, #95d475 100%);
+    .stats-card {
+      transition: all 0.3s ease;
+
+      &:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      }
+
+      .card-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 14px;
+      }
+
+      .amount {
+        font-size: 24px;
+        font-weight: bold;
+        margin-top: 8px;
+
+        .currency {
+          font-size: 16px;
+          margin-right: 4px;
+        }
+
+        &.highlight {
+          animation: pulse 2s infinite;
+        }
+      }
+
+      // 充值金额卡片
+      &.recharge {
+        background: linear-gradient(135deg, #67C23A08 0%, #67C23A18 100%);
+        .card-header { color: #67C23A; }
+        .amount { color: #67C23A; }
+      }
+
+      // 课时费卡片
+      &.consumption {
+        background: linear-gradient(135deg, #409EFF08 0%, #409EFF18 100%);
+        .card-header { color: #409EFF; }
+        .amount { color: #409EFF; }
+      }
+
+      // 实际收入卡片
+      &.profit {
+        background: linear-gradient(135deg, #E6A23C08 0%, #E6A23C18 100%);
+        .card-header { color: #E6A23C; }
+        .amount { color: #E6A23C; }
+      }
+
+      // 待收金额卡片
+      &.pending {
+        background: linear-gradient(135deg, #F56C6C08 0%, #F56C6C18 100%);
+        .card-header { color: #F56C6C; }
+        .amount {
+          color: #F56C6C;
+          &.highlight {
+            color: #F56C6C;
+          }
+        }
+      }
+
+      // 课时统计卡片
+      &.sessions {
+        background: linear-gradient(135deg, #E6A23C08 0%, #E6A23C18 100%);
+        .card-header { color: #E6A23C; }
+        .amount {
+          color: #E6A23C;
+          .unit {
+            font-size: 14px;
+            margin-left: 4px;
+          }
+        }
+      }
+    }
   }
 
-  &.danger {
-    background: linear-gradient(135deg, #f56c6c 0%, #f89898 100%);
+  // 待收金额闪烁动画
+  @keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.6; }
+    100% { opacity: 1; }
   }
 
-  &.info {
-    background: linear-gradient(135deg, #409eff 0%, #79bbff 100%);
-  }
-}
+  .chart-card {
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
 
-.stat-info {
-  flex: 1;
-
-  .stat-label {
-    font-size: 14px;
-    color: var(--el-text-color-secondary);
-    margin-bottom: 8px;
-  }
-
-  .stat-value {
-    font-size: 24px;
-    font-weight: bold;
-
-    &.text-success {
-      color: var(--el-color-success);
+      .date-range {
+        display: flex;
+        gap: 16px;
+      }
     }
 
-    &.text-danger {
-      color: var(--el-color-danger);
+    .chart-controls {
+      display: flex;
+      align-items: center;
+      gap: 24px;
     }
   }
-}
-
-.analysis-header {
-  margin-bottom: 24px;
-
-  .date-picker-group {
-    display: flex;
-    gap: 16px;
-    align-items: center;
-  }
-}
-
-.chart-container {
-  height: 400px;
-  background: white;
-  padding: 24px;
-  border-radius: 8px;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
 }
 </style>

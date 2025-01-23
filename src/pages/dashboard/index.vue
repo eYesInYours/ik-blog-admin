@@ -201,7 +201,7 @@ onUnmounted(() => {
       <el-card class="stats-card consumption">
         <template #header>
           <div class="card-header">
-            <span>课时费总额（签到扣费）</span>
+            <span>课耗费总额（签到扣费）</span>
           </div>
         </template>
         <div class="amount">
@@ -258,7 +258,7 @@ onUnmounted(() => {
           <div class="chart-controls">
             <el-checkbox-group v-model="chartMetrics">
               <el-checkbox label="recharge">充值金额</el-checkbox>
-              <el-checkbox label="consumption">课时费</el-checkbox>
+              <el-checkbox label="consumption">课耗费</el-checkbox>
               <el-checkbox label="sessions">课时数</el-checkbox>
             </el-checkbox-group>
             <div class="date-range">

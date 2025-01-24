@@ -64,7 +64,10 @@ const formData = ref({
 // 表单验证规则
 const formRules = {
   name: [{ required: true, message: "请输入姓名", trigger: "blur" }],
-  phone: [{ required: true, message: "请输入手机号", trigger: "blur" }]
+  // 手机号正则
+  phone: [{ required: true, message: "请输入手机号", trigger: "blur" }, { pattern: /^1[3-9]\d{9}$/, message: "请输入正确的手机号", trigger: "blur" }],
+  // 邮箱正则
+  email: [{ required: false, message: "请输入邮箱", trigger: "blur" }, { pattern: /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/, message: "请输入正确的邮箱", trigger: "blur" }]
 }
 
 // 打开创建对话框
@@ -640,7 +643,7 @@ const handleStatusChange = async (student: any) => {
 
     <!-- 表格 -->
     <el-card v-loading="loading">
-      <el-table :data="tableData" style="width: 100%;" >
+      <el-table :data="tableData" style="width: 100%;">
         <el-table-column prop="name" label="姓名" />
         <el-table-column prop="phone" label="手机号" />
         <el-table-column prop="email" label="邮箱" />

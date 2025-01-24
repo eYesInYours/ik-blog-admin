@@ -9,6 +9,8 @@ import { ElMessage } from "element-plus"
 import { onBeforeUnmount, onMounted, ref, shallowRef } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import "@wangeditor/editor/dist/css/style.css"
+import type { IEditorConfig, IToolbarConfig } from '@wangeditor/editor'
+import type { SlateElement } from '@wangeditor/editor'
 
 const route = useRoute()
 const router = useRouter()
@@ -21,23 +23,45 @@ const editorRef = shallowRef()
 const valueHtml = ref("")
 
 // 工具栏配置
-const toolbarConfig = {
+const toolbarConfig: Partial<IToolbarConfig> = {
   excludeKeys: [
-    "group-video",
-    "group-image",
-    "insertTable",
     "group-justify",
-    "emotion",
-    "bgColor",
-    "fontSize"
   ]
 }
 
+// 存储待上传的图片文件
+const pendingImages = ref<Map<string, File>>(new Map())
+
 // 编辑器配置
-const editorConfig = {
+const editorConfig: Partial<IEditorConfig> = {
   placeholder: "请输入内容...",
   autoFocus: false,
-  MENU_CONF: {}
+  MENU_CONF: {
+    // 图片上传配置
+    uploadImage: {
+      // 自定义上传函数
+      async customUpload(file: File, insertFn: Function) {
+        try {
+          // 检查文件大小，如果大于2M则压缩
+          let processedFile = file
+          if (file.size > 2 * 1024 * 1024) {
+            processedFile = await compressImage(file)
+          }
+          
+          // 生成临时预览图片地址
+          const blobUrl = URL.createObjectURL(processedFile)
+          
+          // 保存文件引用，等发布时再上传
+          pendingImages.value.set(blobUrl, processedFile)
+          
+          // 插入临时图片
+          insertFn(blobUrl)
+        } catch (error) {
+          ElMessage.error('图片处理失败')
+        }
+      }
+    }
+  }
 }
 
 // 文章表单
@@ -127,8 +151,20 @@ async function handleSave(status: "draft" | "published") {
       coverImageFile.value = null
     }
 
+    // 上传编辑器中的图片并替换URL
+    let content = valueHtml.value
+    for (const [blobUrl, file] of pendingImages.value.entries()) {
+      const formData = new FormData()
+      formData.append("file", file)
+      const { data } = await uploadImage(formData)
+      content = content.replace(blobUrl, data.file.url)
+      // 清理临时文件
+      URL.revokeObjectURL(blobUrl)
+    }
+    pendingImages.value.clear()
+
     article.value.status = status
-    article.value.content = valueHtml.value
+    article.value.content = content
 
     if (article.value._id) {
       await articleApi.update(article.value._id, article.value)
@@ -173,10 +209,14 @@ onMounted(() => {
   }
 })
 
-// 组件销毁时，也及时销毁编辑器
+// 组件销毁时清理临时文件
 onBeforeUnmount(() => {
   const editor = editorRef.value
   if (editor == null) return
+  // 清理所有临时图片URL
+  pendingImages.value.forEach((_, url) => {
+    URL.revokeObjectURL(url)
+  })
   editor.destroy()
 })
 </script>

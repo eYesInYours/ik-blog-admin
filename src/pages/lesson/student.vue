@@ -640,7 +640,7 @@ const handleStatusChange = async (student: any) => {
 
     <!-- 表格 -->
     <el-card v-loading="loading">
-      <el-table :data="tableData" style="width: 100%">
+      <el-table :data="tableData" style="width: 100%;" >
         <el-table-column prop="name" label="姓名" />
         <el-table-column prop="phone" label="手机号" />
         <el-table-column prop="email" label="邮箱" />
@@ -668,7 +668,7 @@ const handleStatusChange = async (student: any) => {
             {{ formatDateTime(row.createdAt) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="460" fixed="right">
+        <el-table-column label="操作" width="380" fixed="right" align="center">
           <template #default="{ row }">
             <template v-if="!row.deleted">
               <el-button type="primary" size="small" @click="handleAttendance(row)">

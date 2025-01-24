@@ -47,111 +47,73 @@ const getLessons = async () => {
   }
 }
 
+// 对话框控制
+const dialogVisible = ref(false)
+const dialogType = ref<"create" | "edit">("create")
+const formRef = ref()
+
 // 表单数据
 const formData = ref({
-  id: "",
+  _id: "",
   name: "",
   phone: "",
   email: "",
-  lessonId: "",
-  totalSessions: 0,
-  remainingSessions: 0,
   remark: ""
 })
 
-// 对话框控制
-const dialogVisible = ref(false)
-const dialogTitle = ref("")
-const dialogType = ref<"create" | "update">("create")
-
 // 表单验证规则
 const formRules = {
-  name: [
-    { required: true, message: '请输入姓名', trigger: 'blur' },
-    { min: 2, max: 20, message: '姓名长度应在 2-20 个字符之间', trigger: 'blur' }
-  ],
-  phone: [
-    { required: true, message: '请输入手机号', trigger: 'blur' },
-    {
-      pattern: /^1[3-9]\d{9}$/,
-      message: '请输入正确的手机号格式',
-      trigger: ['blur', 'change']
-    }
-  ],
-  email: [
-    { required: false, message: '请输入邮箱', trigger: 'blur' },
-    {
-      type: 'email',
-      message: '请输入正确的邮箱格式',
-      trigger: ['blur', 'change']
-    }
-  ]
-}
-
-// 表单引用
-const formRef = ref()
-
-// 提交表单
-const handleSubmit = async () => {
-  if (!formRef.value) return
-
-  try {
-    await formRef.value.validate()
-
-    if (dialogType.value === 'create') {
-      const { data } = await studentApi.create(formData.value)
-      ElMessage.success(data.message || '创建成功')
-      dialogVisible.value = false
-    } else {
-      await studentApi.update(formData.value.id, formData.value)
-      ElMessage.success('更新成功')
-      dialogVisible.value = false
-    }
-    getStudents()
-  } catch (error: any) {
-    console.error('提交失败:', error)
-    ElMessage.error(error.response?.data?.message || (dialogType.value === 'create' ? '创建失败' : '更新失败'))
-  }
-}
-
-// 重置表单
-const resetForm = () => {
-  if (formRef.value) {
-    formRef.value.resetFields()
-  }
-  formData.value = {
-    name: '',
-    phone: '',
-    email: '',
-    remark: ''
-  }
+  name: [{ required: true, message: "请输入姓名", trigger: "blur" }],
+  phone: [{ required: true, message: "请输入手机号", trigger: "blur" }]
 }
 
 // 打开创建对话框
 const handleCreate = () => {
-  dialogType.value = 'create'
-  dialogTitle.value = '创建学员'
-  resetForm()
+  dialogType.value = "create"
+  formData.value = {
+    _id: "",
+    name: "",
+    phone: "",
+    email: "",
+    remark: ""
+  }
   dialogVisible.value = true
 }
 
-// 打开更新对话框
-const handleUpdate = (row: any) => {
-  dialogType.value = "update"
-  dialogTitle.value = "更新学员"
+// 打开编辑对话框
+const handleEdit = (row: any) => {
+  dialogType.value = "edit"
   formData.value = {
-    id: row._id,
+    _id: row._id,
     name: row.name,
     phone: row.phone,
     email: row.email || "",
-    lessonId: row.lessonId._id,
-    totalSessions: row.totalSessions,
-    remainingSessions: row.remainingSessions,
     remark: row.remark || ""
   }
-  // 设置选中的课程信息
-  selectedLesson.value = row.lessonId
   dialogVisible.value = true
+}
+
+// 提交表单
+const handleSubmit = async () => {
+  try {
+    await formRef.value.validate()
+    if (dialogType.value === "create") {
+      await studentApi.create(formData.value)
+      ElMessage.success("创建成功")
+    } else {
+      await studentApi.update(formData.value._id, {
+        name: formData.value.name,
+        phone: formData.value.phone,
+        email: formData.value.email,
+        remark: formData.value.remark
+      })
+      ElMessage.success("更新成功")
+    }
+    dialogVisible.value = false
+    getStudents() // 刷新列表
+  } catch (error) {
+    ElMessage.error(dialogType.value === "create" ? "创建失败" : "更新失败")
+  }
 }
 
 // 签到相关
@@ -305,50 +267,6 @@ const handleViewRecords = (student: any) => {
     type: ''
   }
   getRecords(student._id)
-}
-
-// 编辑对话框
-const editDialogVisible = ref(false)
-const editForm = ref({
-  name: "",
-  phone: "",
-  email: "",
-  lessonName: "",
-  remainingSessions: 0,
-  totalSessions: 0,
-  remark: ""
-})
-
-// 打开编辑对话框
-const handleEdit = (row: any) => {
-  dialogType.value = 'edit'
-  dialogTitle.value = '编辑学员'
-  formData.value = {
-    id: row._id,
-    name: row.name,
-    phone: row.phone,
-    email: row.email || '',
-    remark: row.remark || ''
-  }
-  dialogVisible.value = true
-}
-
-// 提交编辑
-const handleEditSubmit = async () => {
-  try {
-    await studentApi.update(student._id, {
-      name: editForm.value.name,
-      phone: editForm.value.phone,
-      email: editForm.value.email,
-      remark: editForm.value.remark
-    })
-    ElMessage.success("编辑成功")
-    editDialogVisible.value = false
-    getStudents()
-  } catch (error) {
-    ElMessage.error("编辑失败")
-    console.error(error)
-  }
 }
 
 // 删除学员
@@ -557,7 +475,7 @@ onMounted(() => {
 // 关闭对话框时重置表单
 watch(dialogVisible, (val) => {
   if (!val) {
-    resetForm()
+    formRef.value.resetFields()
   }
 })
 
@@ -676,6 +594,19 @@ const handleEditRecordSubmit = async () => {
 const formatHistoryTime = (dateStr: string) => {
   return dayjs(dateStr).format('YYYY-MM-DD HH:mm:ss')
 }
+
+// 处理状态变更
+const handleStatusChange = async (student: any) => {
+  try {
+    await studentApi.updateStatus(student._id, student.status)
+    getStudents()
+    ElMessage.success('状态更新成功')
+  } catch (error) {
+    // 如果更新失败，恢复原来的状态
+    student.status = student.status === 'active' ? 'inactive' : 'active'
+    ElMessage.error('状态更新失败')
+  }
+}
 </script>
 
 <template>
@@ -687,7 +618,7 @@ const formatHistoryTime = (dateStr: string) => {
           <el-input v-model="queryParams.keyword" placeholder="姓名/手机号" :prefix-icon="Search" clearable
             @keyup.enter="getStudents" />
         </el-form-item>
-        <el-form-item label="状态">
+        <el-form-item label="状态" width="160">
           <el-select v-model="queryParams.status" placeholder="状态" clearable style="width: 160px;">
             <el-option label="在读" value="active" />
             <el-option label="结业" value="inactive" />
@@ -712,21 +643,29 @@ const formatHistoryTime = (dateStr: string) => {
         <el-table-column prop="name" label="姓名" />
         <el-table-column prop="phone" label="手机号" />
         <el-table-column prop="email" label="邮箱" />
+        <el-table-column prop="remark" label="备注" />
         <el-table-column prop="balance" label="账户余额">
           <template #default="{ row }">
-            <span :class="[
-              'balance-text',
-              row.balance < 0 ? 'balance-negative' : 'balance-positive'
-            ]">
-              ¥ {{ row.balance.toFixed(2) }}
+            <span :class="{
+              'text-red-500': row.balance < 0,
+              'text-green-500': row.balance > 0
+            }">
+              ¥ {{ row.balance }}
             </span>
           </template>
         </el-table-column>
-        <el-table-column prop="status" label="状态">
+        <el-table-column label="状态" width="160">
           <template #default="{ row }">
-            <el-tag :type="row.status === 'active' ? 'success' : 'info'">
-              {{ row.status === 'active' ? '在读' : '结业' }}
-            </el-tag>
+            <div class="status-cell">
+              <el-switch
+                v-model="row.status"
+                :active-value="'active'"
+                :inactive-value="'inactive'"
+                active-text="在读"
+                inactive-text="结业"
+                @change="() => handleStatusChange(row)"
+              />
+            </div>
           </template>
         </el-table-column>
         <el-table-column prop="createdAt" label="创建时间" width="200">
@@ -739,7 +678,7 @@ const formatHistoryTime = (dateStr: string) => {
             <template v-if="!row.deleted">
               <el-button type="primary" size="small" @click="handleAttendance(row)">
                 签到
-            </el-button>
+              </el-button>
               <el-button type="success" size="small" @click="handleRecharge(row)">
                 充值
               </el-button>
@@ -748,6 +687,9 @@ const formatHistoryTime = (dateStr: string) => {
               </el-button>
               <el-button type="info" size="small" @click="handleAnalysis(row)">
                 分析
+              </el-button>
+              <el-button type="primary" size="small" @click="handleEdit(row)">
+                编辑
               </el-button>
               <el-popconfirm title="确定要删除吗？" @confirm="handleDelete(row._id)">
                 <template #reference>
@@ -777,9 +719,18 @@ const formatHistoryTime = (dateStr: string) => {
       </div>
     </el-card>
 
-    <!-- 创建学员对话框 -->
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="500px">
-      <el-form :model="formData" :rules="formRules" ref="formRef" label-width="100px">
+    <!-- 创建/编辑学员对话框 -->
+    <el-dialog
+      v-model="dialogVisible"
+      :title="dialogType === 'create' ? '创建学员' : '编辑学员'"
+      width="500px"
+    >
+      <el-form
+        :model="formData"
+        :rules="formRules"
+        ref="formRef"
+        label-width="100px"
+      >
         <el-form-item label="姓名" prop="name" required>
           <el-input v-model="formData.name" />
         </el-form-item>
@@ -962,28 +913,6 @@ const formatHistoryTime = (dateStr: string) => {
             @current-change="() => currentStudent.value && getRecords(currentStudent.value._id)" />
         </div>
       </div>
-    </el-dialog>
-
-    <!-- 编辑对话框 -->
-    <el-dialog v-model="editDialogVisible" :title="dialogTitle" width="500px">
-      <el-form :model="editForm" label-width="100px">
-        <el-form-item label="姓名" required>
-          <el-input v-model="editForm.name" />
-        </el-form-item>
-        <el-form-item label="手机号" required>
-          <el-input v-model="editForm.phone" />
-        </el-form-item>
-        <el-form-item label="邮箱">
-          <el-input v-model="editForm.email" />
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="editForm.remark" type="textarea" :rows="3" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="editDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleEditSubmit">确定</el-button>
-      </template>
     </el-dialog>
 
     <!-- 分析对话框 -->
@@ -1483,5 +1412,24 @@ const formatHistoryTime = (dateStr: string) => {
   :deep(.el-timeline-item__tail) {
     border-left-color: var(--el-border-color-lighter);
   }
+}
+
+.status-cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+:deep(.el-switch) {
+  --el-switch-on-color: var(--el-color-success);
+  --el-switch-off-color: var(--el-color-danger);
+}
+
+:deep(.el-switch__label) {
+  color: var(--el-text-color-regular);
+}
+
+:deep(.el-switch__label.is-active) {
+  color: var(--el-color-primary);
 }
 </style>

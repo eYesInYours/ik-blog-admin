@@ -218,5 +218,14 @@ export const studentApi = {
       method: 'GET',
       params
     })
+  },
+
+  // 更新学员状态
+  updateStatus(id: string, status: 'active' | 'inactive') {
+    return request<ApiResponse<Student>>({
+      url: `/students/${id}/status`,
+      method: 'PUT',
+      data: { status }
+    })
   }
 }

@@ -284,7 +284,7 @@ const handleDelete = async (id: string) => {
 // 格式化时间的函数
 const formatDateTime = (dateStr: string) => {
   if (!dateStr) return '-'
-  return dayjs(dateStr).format('YYYY-MM-DD HH:mm:ss')
+  return dayjs(dateStr).format('YYYY-MM-DD HH:mm')
 }
 
 // 添加分析对话框
@@ -547,7 +547,8 @@ const handleEditRecord = (record: any) => {
     originalAmount: record.amount,
     calculatedAmount: record.amount,
     recordTime: record.recordTime ? dayjs(record.recordTime).format('YYYY-MM-DD HH:mm:ss') : dayjs().format('YYYY-MM-DD HH:mm:ss'),
-    modifyHistory: record.modifyHistory || []
+    modifyHistory: record.modifyHistory || [],
+    remark: record.remark || ''
   }
   editRecordDialogVisible.value = true
 }
@@ -564,7 +565,7 @@ const calculateModifiedAmount = (value: number | null) => {
 // 提交修改记录
 const handleEditRecordSubmit = async () => {
   try {
-    const data: any = {}
+    const data: any = { remark: editRecordForm.value.remark }
 
     if (editRecordForm.value.type === 'attendance') {
       data.sessions = editRecordForm.value.sessions
@@ -657,14 +658,8 @@ const handleStatusChange = async (student: any) => {
         <el-table-column label="状态" width="160">
           <template #default="{ row }">
             <div class="status-cell">
-              <el-switch
-                v-model="row.status"
-                :active-value="'active'"
-                :inactive-value="'inactive'"
-                active-text="在读"
-                inactive-text="结业"
-                @change="() => handleStatusChange(row)"
-              />
+              <el-switch v-model="row.status" :active-value="'active'" :inactive-value="'inactive'" active-text="在读"
+                inactive-text="结业" @change="() => handleStatusChange(row)" />
             </div>
           </template>
         </el-table-column>
@@ -720,17 +715,8 @@ const handleStatusChange = async (student: any) => {
     </el-card>
 
     <!-- 创建/编辑学员对话框 -->
-    <el-dialog
-      v-model="dialogVisible"
-      :title="dialogType === 'create' ? '创建学员' : '编辑学员'"
-      width="500px"
-    >
-      <el-form
-        :model="formData"
-        :rules="formRules"
-        ref="formRef"
-        label-width="100px"
-      >
+    <el-dialog v-model="dialogVisible" :title="dialogType === 'create' ? '创建学员' : '编辑学员'" width="500px">
+      <el-form :model="formData" :rules="formRules" ref="formRef" label-width="100px">
         <el-form-item label="姓名" prop="name" required>
           <el-input v-model="formData.name" />
         </el-form-item>
@@ -776,14 +762,9 @@ const handleStatusChange = async (student: any) => {
           </el-select>
         </el-form-item>
         <el-form-item label="签到时间" required>
-          <el-date-picker
-            v-model="attendanceForm.attendanceTime"
-            type="datetime"
-            placeholder="选择日期时间"
-            format="YYYY-MM-DD HH:mm"
-            value-format="YYYY-MM-DD HH:mm:ss"
-            :default-time="new Date(2000, 1, 1, new Date().getHours(), new Date().getMinutes(), 0)"
-          />
+          <el-date-picker v-model="attendanceForm.attendanceTime" type="datetime" placeholder="选择日期时间"
+            format="YYYY-MM-DD HH:mm" value-format="YYYY-MM-DD HH:mm:ss"
+            :default-time="new Date(2000, 1, 1, new Date().getHours(), new Date().getMinutes(), 0)" />
         </el-form-item>
         <el-form-item label="课时数" required>
           <el-input-number v-model="attendanceForm.sessions" :min="1" @change="calculateAmount" />
@@ -832,7 +813,7 @@ const handleStatusChange = async (student: any) => {
     </el-dialog>
 
     <!-- 上课记录对话框 -->
-    <el-dialog v-model="recordsDialogVisible" title="账户记录" width="800px">
+    <el-dialog v-model="recordsDialogVisible" title="账户记录" width="1000px">
       <!-- 添加筛选按钮 -->
       <div class="filter-buttons">
         <el-button-group>
@@ -852,14 +833,14 @@ const handleStatusChange = async (student: any) => {
 
       <div v-loading="recordsLoading">
         <el-table :data="recordsList" style="width: 100%">
-          <el-table-column prop="createdAt" label="创建时间" width="180">
+          <el-table-column prop="createdAt" label="创建时间" width="160">
             <template #default="{ row }">
               <el-text>
                 {{ formatDateTime(row.createdAt) }}
               </el-text>
             </template>
           </el-table-column>
-          <el-table-column label="签到时间" width="180">
+          <el-table-column label="签到时间" width="160">
             <template #default="{ row }">
               <el-text v-if="row.type === 'attendance'">
                 {{ formatDateTime(row.recordTime) }}
@@ -880,7 +861,7 @@ const handleStatusChange = async (student: any) => {
               </span>
             </template>
           </el-table-column>
-          <el-table-column label="课程信息" width="200">
+          <el-table-column label="课程信息" width="180">
             <template #default="{ row }">
               <template v-if="row.type === 'attendance' && row.lessonId">
                 <div>{{ row.lessonId.name }}</div>
@@ -895,11 +876,7 @@ const handleStatusChange = async (student: any) => {
           </el-table-column>
           <el-table-column label="操作" width="150" fixed="right">
             <template #default="{ row }">
-              <el-button
-                type="primary"
-                size="small"
-                @click="handleEditRecord(row)"
-              >
+              <el-button type="primary" size="small" @click="handleEditRecord(row)">
                 修改
               </el-button>
             </template>
@@ -991,11 +968,8 @@ const handleStatusChange = async (student: any) => {
     </el-dialog>
 
     <!-- 修改记录对话框 -->
-    <el-dialog
-      v-model="editRecordDialogVisible"
-      :title="editRecordForm.type === 'attendance' ? '修改签到记录' : '修改充值记录'"
-      width="500px"
-    >
+    <el-dialog v-model="editRecordDialogVisible" :title="editRecordForm.type === 'attendance' ? '修改签到记录' : '修改充值记录'"
+      width="500px">
       <el-form label-width="100px">
         <template v-if="editRecordForm.type === 'attendance'">
           <!-- 签到记录修改界面 -->
@@ -1011,18 +985,20 @@ const handleStatusChange = async (student: any) => {
           </div>
 
           <el-form-item label="课时">
-            <el-input-number
-              v-model="editRecordForm.sessions"
-              :min="1"
-              @input="calculateModifiedAmount"
-          />
-        </el-form-item>
+            <el-input-number v-model="editRecordForm.sessions" :min="1" @input="calculateModifiedAmount" />
+          </el-form-item>
+
+          <el-form-item label="备注">
+            <el-input v-model="editRecordForm.remark" type="textarea" :rows="2" placeholder="请输入备注信息" />
+          </el-form-item>
 
           <!-- 显示计算后的金额 -->
           <div class="amount-preview" v-if="editRecordForm.calculatedAmount !== editRecordForm.originalAmount">
             <div class="amount-change">
               <span class="old-amount">原扣费金额: ¥{{ Math.abs(editRecordForm.originalAmount) }}</span>
-              <el-icon class="arrow"><ArrowRight /></el-icon>
+              <el-icon class="arrow">
+                <ArrowRight />
+              </el-icon>
               <span class="new-amount">新扣费金额: ¥{{ Math.abs(editRecordForm.calculatedAmount) }}</span>
             </div>
             <div class="diff-amount" :class="{
@@ -1030,39 +1006,36 @@ const handleStatusChange = async (student: any) => {
               'negative': Math.abs(editRecordForm.calculatedAmount) > Math.abs(editRecordForm.originalAmount)
             }">
               {{ Math.abs(editRecordForm.calculatedAmount) > Math.abs(editRecordForm.originalAmount) ? '多扣' : '少扣' }}
-              ¥{{ Math.abs(Math.abs(editRecordForm.calculatedAmount) - Math.abs(editRecordForm.originalAmount)).toFixed(2) }}
+              ¥{{ Math.abs(Math.abs(editRecordForm.calculatedAmount) -
+                Math.abs(editRecordForm.originalAmount)).toFixed(2) }}
             </div>
           </div>
 
           <el-form-item label="签到时间">
-          <el-date-picker
-              v-model="editRecordForm.recordTime"
-              type="datetime"
-              placeholder="选择日期时间"
-              format="YYYY-MM-DD HH:mm"
-              value-format="YYYY-MM-DD HH:mm:ss"
-              :default-time="dayjs().format('HH:mm:ss')"
-              :disabledDate="(time) => time.getTime() > Date.now()"
-          />
-        </el-form-item>
+            <el-date-picker v-model="editRecordForm.recordTime" type="datetime" placeholder="选择日期时间"
+              format="YYYY-MM-DD HH:mm" value-format="YYYY-MM-DD HH:mm:ss" :default-time="dayjs().format('HH:mm:ss')"
+              :disabledDate="(time) => time.getTime() > Date.now()" />
+          </el-form-item>
         </template>
 
         <template v-else>
           <!-- 充值记录修改界面 -->
           <el-form-item label="金额">
-            <el-input-number
-              v-model="editRecordForm.amount"
-              :precision="2"
-              :step="100"
-              @input="handleRechargeAmountChange"
-          />
-        </el-form-item>
+            <el-input-number v-model="editRecordForm.amount" :precision="2" :step="100"
+              @input="handleRechargeAmountChange" />
+          </el-form-item>
+
+          <el-form-item label="备注">
+            <el-input v-model="editRecordForm.remark" type="textarea" :rows="2" placeholder="请输入备注信息" />
+          </el-form-item>
 
           <!-- 显示金额变化 -->
           <div class="amount-preview" v-if="editRecordForm.calculatedAmount !== editRecordForm.originalAmount">
             <div class="amount-change">
               <span class="old-amount">原充值金额: ¥{{ Math.abs(editRecordForm.originalAmount) }}</span>
-              <el-icon class="arrow"><ArrowRight /></el-icon>
+              <el-icon class="arrow">
+                <ArrowRight />
+              </el-icon>
               <span class="new-amount">新充值金额: ¥{{ Math.abs(editRecordForm.calculatedAmount) }}</span>
             </div>
             <div class="diff-amount" :class="{
@@ -1070,7 +1043,8 @@ const handleStatusChange = async (student: any) => {
               'negative': Math.abs(editRecordForm.calculatedAmount) < Math.abs(editRecordForm.originalAmount)
             }">
               {{ Math.abs(editRecordForm.calculatedAmount) > Math.abs(editRecordForm.originalAmount) ? '增加' : '减少' }}
-              ¥{{ Math.abs(Math.abs(editRecordForm.calculatedAmount) - Math.abs(editRecordForm.originalAmount)).toFixed(2) }}
+              ¥{{ Math.abs(Math.abs(editRecordForm.calculatedAmount) -
+                Math.abs(editRecordForm.originalAmount)).toFixed(2) }}
             </div>
           </div>
         </template>
@@ -1079,12 +1053,8 @@ const handleStatusChange = async (student: any) => {
         <div v-if="editRecordForm.modifyHistory?.length" class="modify-history">
           <div class="history-title">修改历史</div>
           <el-timeline>
-            <el-timeline-item
-              v-for="(history, index) in editRecordForm.modifyHistory"
-              :key="index"
-              :timestamp="formatHistoryTime(history.modifiedAt)"
-              size="small"
-            >
+            <el-timeline-item v-for="(history, index) in editRecordForm.modifyHistory" :key="index"
+              :timestamp="formatHistoryTime(history.modifiedAt)" size="small">
               <div class="history-item">
                 <template v-if="editRecordForm.type === 'attendance'">
                   <div class="history-changes">
@@ -1290,6 +1260,7 @@ const handleStatusChange = async (student: any) => {
 }
 
 @keyframes flash {
+
   0%,
   100% {
     opacity: 1;
@@ -1394,7 +1365,7 @@ const handleStatusChange = async (student: any) => {
       font-size: 13px;
       color: var(--el-text-color-regular);
 
-      > div {
+      >div {
         line-height: 1.8;
       }
     }

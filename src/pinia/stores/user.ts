@@ -7,7 +7,8 @@ import { useSettingsStore } from "./settings"
 import { useTagsViewStore } from "./tags-view"
 
 export const useUserStore = defineStore("user", () => {
-  const token = ref<string>(getToken() || "")
+  const token = ref<string>(getToken('access') || "")
+  let refresh_token = ref<string>(getToken('refresh') || "")
   const roles = ref<string[]>([])
   const username = ref<string>("")
 
@@ -15,9 +16,10 @@ export const useUserStore = defineStore("user", () => {
   const settingsStore = useSettingsStore()
 
   // 设置 Token
-  const setToken = async (value: string) => {
-    _setToken(value)
-    token.value = value
+  const setToken = async (accessToken, refreshToken) => {
+    _setToken(accessToken, refreshToken)
+    token.value = accessToken
+    refresh_token = refreshToken
   }
 
   // 获取用户详情
@@ -30,11 +32,11 @@ export const useUserStore = defineStore("user", () => {
 
   // 模拟角色变化
   const changeRoles = async (role: string) => {
-    const newToken = `token-${role}`
-    token.value = newToken
-    _setToken(newToken)
-    // 用刷新页面代替重新登录
-    location.reload()
+    // const newToken = `token-${role}`
+    // token.value = newToken
+    // _setToken(newToken)
+    // // 用刷新页面代替重新登录
+    // location.reload()
   }
 
   // 登出

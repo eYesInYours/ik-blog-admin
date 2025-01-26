@@ -59,7 +59,8 @@ function handleLogin() {
     try {
       await verifyLoginCodeApi(loginFormData.code)
       const res = await loginApi(loginFormData)
-      userStore.setToken(res.data.token)
+      console.log('login res', res)
+      userStore.setToken(res.data.access_token, res.data.refresh_token)
       router.push("/")
     } catch (error: any) {
       createCode()

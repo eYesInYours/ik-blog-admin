@@ -47,13 +47,13 @@ const editorConfig: Partial<IEditorConfig> = {
           if (file.size > 2 * 1024 * 1024) {
             processedFile = await compressImage(file)
           }
-          
+
           // 生成临时预览图片地址
           const blobUrl = URL.createObjectURL(processedFile)
-          
+
           // 保存文件引用，等发布时再上传
           pendingImages.value.set(blobUrl, processedFile)
-          
+
           // 插入临时图片
           insertFn(blobUrl)
         } catch (error) {
@@ -275,7 +275,7 @@ onBeforeUnmount(() => {
             <el-form-item label="封面图">
               <el-upload class="cover-uploader" :show-file-list="false" accept="image/*"
                 :before-upload="handleUploadCover">
-                <el-image v-if="article.cover" :src="article.cover" class="cover-image" />
+                <el-image v-if="article.cover" :src="article.cover" fit="cover" class="cover-image" />
                 <el-icon v-else class="upload-icon">
                   <Plus />
                 </el-icon>

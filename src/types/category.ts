@@ -10,6 +10,7 @@ export interface Category {
   createdAt: string
   updatedAt: string
   children?: Category[]
+  disabled?: boolean
 }
 
 export interface CategoryQueryParams {

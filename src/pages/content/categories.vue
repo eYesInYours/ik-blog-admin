@@ -3,6 +3,7 @@ import type { Category } from "@/types/category"
 import { categoryApi } from "@/api/category"
 import { ElMessage, ElMessageBox } from "element-plus"
 import { onMounted, ref } from "vue"
+import { cloneDeep } from 'lodash-es'
 
 interface CategoryForm {
   _id?: string
@@ -32,6 +33,19 @@ const rules = {
 
 const treeData = ref<Category[]>([])
 
+// 递归判断，将每个分类的disabled属性设置为true
+function setDisabled(categories: Category[]) {
+  categories.forEach(category => {
+    console.log('category', category)
+    if (category._id === form.value.parentId) {
+      category.disabled = true
+    }
+    if (category.children.length) {
+      setDisabled(category.children)
+    }
+  })
+}
+
 // 获取分类列表
 async function fetchCategories() {
   try {
@@ -41,6 +55,31 @@ async function fetchCategories() {
   } catch (error) {
     ElMessage.error("获取分类列表失败")
   }
+}
+
+// 获取可选的父级分类列表（禁用当前分类）
+function getSelectableCategories(currentId?: string): Category[] {
+  if (!currentId) {
+    return categories.value
+  }
+  
+  // 深拷贝分类列表，避免修改原始数据
+  const selectableCategories = cloneDeep(categories.value)
+  
+  // 递归设置禁用状态
+  function setDisabledStatus(categories: Category[]) {
+    for (const category of categories) {
+      if (category._id === currentId) {
+        category.disabled = true
+      }
+      if (category.children?.length) {
+        setDisabledStatus(category.children)
+      }
+    }
+  }
+  
+  setDisabledStatus(selectableCategories)
+  return selectableCategories
 }
 
 // 打开新建/编辑对话框
@@ -225,9 +264,13 @@ onMounted(() => {
         <el-form-item label="上级分类" prop="parentId">
           <el-tree-select
             v-model="form.parentId"
-            :data="categories"
+            :data="getSelectableCategories(form._id)"
             node-key="_id"
-            :props="{ label: 'name' }"
+            :props="{ 
+              label: 'name',
+              disabled: 'disabled'  // 添加 disabled 属性
+            }"
+            check-strictly
             clearable
             placeholder="请选择上级分类"
           />

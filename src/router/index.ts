@@ -82,14 +82,6 @@ export const constantRoutes: RouteRecordRaw[] = [
         }
       },
       {
-        path: "comments",
-        component: () => import("@/pages/content/comments.vue"),
-        name: "Comments",
-        meta: {
-          title: "评论管理"
-        }
-      },
-      {
         path: "categories",
         component: () => import("@/pages/content/categories.vue"),
         name: "Categories",

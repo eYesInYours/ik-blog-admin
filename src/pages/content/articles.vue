@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import type { Article } from "@/types/article"
 import { articleApi } from "@/api/article"
-import { ElMessage, ElMessageBox } from "element-plus"
 import { onMounted, reactive, ref } from "vue"
 import { useRouter } from "vue-router"
 
@@ -28,7 +27,7 @@ const statusConfig = {
     label: '草稿'
   },
   published: {
-    type: 'success', 
+    type: 'success',
     label: '已发布'
   },
   offline: {
@@ -271,30 +270,17 @@ onMounted(() => {
         <el-form-item label="关键词">
           <el-input v-model="searchForm.keyword" placeholder="标题/内容" clearable />
         </el-form-item>
-        
+
         <el-form-item label="状态">
           <el-select v-model="searchForm.status" placeholder="全部状态" clearable style="width: 150px">
-            <el-option v-for="item in statusOptions" 
-              :key="item.value" 
-              :label="item.label" 
-              :value="item.value" />
+            <el-option v-for="item in statusOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
 
         <el-form-item label="日期范围">
-          <el-date-picker
-            v-model="searchForm.startDate"
-            type="date"
-            placeholder="开始日期"
-            style="width: 150px"
-          />
+          <el-date-picker v-model="searchForm.startDate" type="date" placeholder="开始日期" style="width: 150px" />
           <span class="mx-2">-</span>
-          <el-date-picker
-            v-model="searchForm.endDate"
-            type="date"
-            placeholder="结束日期"
-            style="width: 150px"
-          />
+          <el-date-picker v-model="searchForm.endDate" type="date" placeholder="结束日期" style="width: 150px" />
         </el-form-item>
 
         <el-form-item>
@@ -307,7 +293,9 @@ onMounted(() => {
     <!-- 操作栏 -->
     <div class="operation-bar">
       <el-button type="primary" @click="router.push('/content/articles/edit')">
-        <el-icon><Plus /></el-icon>新建文章
+        <el-icon>
+          <Plus />
+        </el-icon>新建文章
       </el-button>
     </div>
 
@@ -335,7 +323,7 @@ onMounted(() => {
       </el-table-column>
 
       <el-table-column prop="categoryName" label="分类" width="120" />
-      
+
       <el-table-column prop="createdAt" label="创建时间" width="160">
         <template #default="{ row }">
           {{ formatDate(row.createdAt) }}
@@ -374,20 +362,12 @@ onMounted(() => {
             </el-button>
 
             <!-- 评论管理按钮 -->
-            <el-button 
-              size="small" 
-              type="info" 
-              @click="openCommentModal(row)"
-            >
+            <el-button size="small" type="info" @click="openCommentModal(row)">
               评论管理
             </el-button>
 
             <!-- 如果有草稿，显示编辑草稿按钮；否则显示创建草稿按钮 -->
-            <el-button 
-              size="small" 
-              type="warning" 
-              @click="row.draftId ? editDraft(row) : createDraft(row)"
-            >
+            <el-button size="small" type="warning" @click="row.draftId ? editDraft(row) : createDraft(row)">
               {{ row.draftId ? '编辑草稿' : '创建草稿' }}
             </el-button>
 
@@ -409,12 +389,10 @@ onMounted(() => {
                   </template>
 
                   <!-- 其他状态操作 -->
-                  <el-dropdown-item v-if="row.status === 'published'"
-                    @click="updateStatus(row._id, 'offline')">
+                  <el-dropdown-item v-if="row.status === 'published'" @click="updateStatus(row._id, 'offline')">
                     下线
                   </el-dropdown-item>
-                  <el-dropdown-item v-if="row.status === 'offline'"
-                    @click="updateStatus(row._id, 'published')">
+                  <el-dropdown-item v-if="row.status === 'offline'" @click="updateStatus(row._id, 'published')">
                     重新发布
                   </el-dropdown-item>
                   <el-dropdown-item divided @click="handleDelete(row._id)">
@@ -430,29 +408,14 @@ onMounted(() => {
 
     <!-- 分页 -->
     <div class="pagination">
-      <el-pagination
-        v-model:current-page="currentPage"
-        v-model:page-size="pageSize"
-        :total="total"
-        :page-sizes="[10, 20, 50, 100]"
-        layout="total, sizes, prev, pager, next, jumper"
-        @size-change="handleSizeChange"
-        @current-change="handleCurrentChange"
-      />
+      <el-pagination v-model:current-page="currentPage" v-model:page-size="pageSize" :total="total"
+        :page-sizes="[10, 20, 50, 100]" layout="total, sizes, prev, pager, next, jumper" @size-change="handleSizeChange"
+        @current-change="handleCurrentChange" />
     </div>
 
     <!-- 评论管理对话框 -->
-    <el-dialog
-      v-model="showCommentModal"
-      :title="`评论管理 - ${currentArticle?.title}`"
-      width="800px"
-    >
-      <el-table 
-        v-loading="loadingComments" 
-        :data="comments"
-        row-key="_id"
-        @expand-change="handleExpand"
-      >
+    <el-dialog v-model="showCommentModal" :title="`评论管理 - ${currentArticle?.title}`" width="800px">
+      <el-table v-loading="loadingComments" :data="comments" row-key="_id" @expand-change="handleExpand">
         <el-table-column type="expand">
           <template #default="{ row }">
             <div v-if="row.replies?.length" class="replies-list">
@@ -514,7 +477,7 @@ onMounted(() => {
 <style lang="scss" scoped>
 .articles-container {
   padding: 20px;
-  
+
   .search-card {
     margin-bottom: 20px;
   }

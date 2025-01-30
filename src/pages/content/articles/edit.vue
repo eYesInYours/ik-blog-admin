@@ -158,30 +158,32 @@ async function handleSave(status: "draft" | "published") {
     }
 
     // 如果有待上传的封面图文件，先上传图片
-    if (coverImageFile.value) {
-      const formData = new FormData()
-      formData.append("file", coverImageFile.value)
-      const { data } = await uploadImage(formData)
-      article.value.cover = data.file.url
-      // 清理临时文件
-      URL.revokeObjectURL(article.value.cover)
-      coverImageFile.value = null
-    }
+    // if (coverImageFile.value) {
+    //   const formData = new FormData()
+    //   formData.append("file", coverImageFile.value)
+    //   const { data } = await uploadImage(formData)
+    //   article.value.cover = data.file.url
+    //   // 清理临时文件
+    //   URL.revokeObjectURL(article.value.cover)
+    //   coverImageFile.value = null
+    // }
 
-    // 上传编辑器中的图片并替换URL
-    let content = valueHtml.value
-    for (const [blobUrl, file] of pendingImages.value.entries()) {
-      const formData = new FormData()
-      formData.append("file", file)
-      const { data } = await uploadImage(formData)
-      content = content.replace(blobUrl, data.file.url)
-      // 清理临时文件
-      URL.revokeObjectURL(blobUrl)
-    }
-    pendingImages.value.clear()
+    // // 上传编辑器中的图片并替换URL
+    // let content = valueHtml.value
+    // for (const [blobUrl, file] of pendingImages.value.entries()) {
+    //   const formData = new FormData()
+    //   formData.append("file", file)
+    //   const { data } = await uploadImage(formData)
+    //   content = content.replace(blobUrl, data.file.url)
+    //   // 清理临时文件
+    //   URL.revokeObjectURL(blobUrl)
+    // }
+    // pendingImages.value.clear()
 
+    // article.value.status = status
+    // article.value.content = content
+    await handleResources()
     article.value.status = status
-    article.value.content = content
 
     if (article.value._id) {
       await articleApi.update(article.value._id, article.value)
@@ -223,6 +225,16 @@ async function saveAsDraft() {
   if (!article.value.title?.trim()) {
     ElMessage.warning("请输入文章标题")
     return
+  }
+  if (!article.value.category) {
+    return ElMessage.warning("请选择分类")
+  }
+
+  if (article.value.category) {
+    const categoryPath = findCategoryPath(categories.value, article.value.category)
+    if (categoryPath) {
+      article.value.categoryName = categoryPath
+    }
   }
 
   loading.value = true
@@ -316,36 +328,21 @@ onBeforeUnmount(() => {
           返回
         </el-button>
         <el-button @click="saveAsDraft">存为草稿</el-button>
-        
+
         <!-- 草稿发布按钮 -->
-        <el-button 
-          v-if="route.query.type === 'draft'"
-          type="primary" 
-          :loading="loading"
-          @click="handlePublishClick"
-        >
+        <el-button v-if="route.query.type === 'draft'" type="primary" :loading="loading" @click="handlePublishClick">
           发布草稿
         </el-button>
 
         <!-- 普通发布按钮 -->
-        <el-button 
-          v-else
-          type="primary" 
-          :loading="loading" 
-          @click="handleSave('published')"
-        >
+        <el-button v-else type="primary" :loading="loading" @click="handleSave('published')">
           {{ article._id ? "更新文章" : "发布文章" }}
         </el-button>
       </div>
     </div>
 
     <!-- 发布确认对话框 -->
-    <el-dialog
-      v-model="showPublishConfirm"
-      title="发布确认"
-      width="400px"
-      :close-on-click-modal="false"
-    >
+    <el-dialog v-model="showPublishConfirm" title="发布确认" width="400px" :close-on-click-modal="false">
       <span>确定要发布草稿吗？发布后将覆盖当前的线上版本。</span>
       <template #footer>
         <span class="dialog-footer">
@@ -456,15 +453,18 @@ onBeforeUnmount(() => {
 
       .title-input {
         margin-bottom: 1px;
+
         :deep(.el-input__wrapper) {
           box-shadow: none;
           border-radius: 0;
           padding: 0.75rem 1rem;
           background-color: white;
         }
+
         :deep(.el-input__inner) {
           font-size: 1.5rem;
           font-weight: 500;
+
           &::placeholder {
             color: #999;
           }
@@ -494,6 +494,7 @@ onBeforeUnmount(() => {
             button {
               padding: 0.25rem;
               border-radius: 4px;
+
               &:hover {
                 background-color: #f3f3f3;
               }

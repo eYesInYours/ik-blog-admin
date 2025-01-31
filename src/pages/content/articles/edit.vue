@@ -6,7 +6,7 @@ import { uploadImage } from "@/api/upload"
 import { compressImage } from "@/common/utils/image"
 import { Editor, Toolbar } from "@wangeditor/editor-for-vue"
 import { ElMessage, ElMessageBox } from "element-plus"
-import { onBeforeUnmount, onMounted, ref, shallowRef } from "vue"
+import { onBeforeUnmount, onMounted, ref, shallowRef, computed } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import "@wangeditor/editor/dist/css/style.css"
 import type { IEditorConfig, IToolbarConfig } from '@wangeditor/editor'
@@ -82,6 +82,13 @@ const coverImageFile = ref<File | null>(null)
 
 // 控制确认对话框显示
 const showPublishConfirm = ref(false)
+
+// 计算字数
+const wordCount = computed(() => {
+  // 移除 HTML 标签，只统计纯文本内容
+  const text = valueHtml.value.replace(/<[^>]*>/g, '')
+  return text.length
+})
 
 // 获取分类列表
 async function fetchCategories() {
@@ -339,6 +346,11 @@ onBeforeUnmount(() => {
           {{ article._id ? "更新文章" : "发布文章" }}
         </el-button>
       </div>
+
+      <!-- 添加字数统计 -->
+      <div class="word-count">
+        <el-tag size="large">{{ wordCount }} 字</el-tag>
+      </div>
     </div>
 
     <!-- 发布确认对话框 -->
@@ -436,6 +448,20 @@ onBeforeUnmount(() => {
     justify-content: space-between;
     align-items: center;
     padding: 0 1rem;
+
+    .left {
+      display: flex;
+      gap: 10px;
+    }
+
+    .word-count {
+      .el-tag {
+        font-size: 14px;
+        padding: 0 12px;
+        height: 32px;
+        line-height: 32px;
+      }
+    }
   }
 
   .main {

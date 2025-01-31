@@ -42,6 +42,7 @@ const statusConfig = {
 
 // 状态过滤选项
 const statusOptions = [
+  { value: '', label: '全部状态' },
   { value: 'draft', label: '草稿' },
   { value: 'published', label: '已发布' },
   { value: 'offline', label: '已下线' },

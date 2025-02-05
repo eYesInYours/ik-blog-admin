@@ -180,6 +180,7 @@ onUnmounted(() => {
   chart?.dispose()
   window.removeEventListener('resize', handleResize)
 })
+const isAdmin = userStore.roles.includes("writer")
 </script>
 
 <template>

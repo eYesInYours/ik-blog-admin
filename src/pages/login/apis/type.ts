@@ -13,5 +13,6 @@ export interface LoginCodeResponse {
 }
 
 export interface LoginResponse {
-  token: string
+  access_token: string
+  refresh_token: string
 }

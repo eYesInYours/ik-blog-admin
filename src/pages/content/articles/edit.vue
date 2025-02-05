@@ -5,8 +5,8 @@ import { categoryApi } from "@/api/category"
 import { uploadImage } from "@/api/upload"
 import { compressImage } from "@/common/utils/image"
 import { Editor, Toolbar } from "@wangeditor/editor-for-vue"
-import { ElMessage } from "element-plus"
-import { onBeforeUnmount, onMounted, ref, shallowRef } from "vue"
+import { ElMessage, ElMessageBox } from "element-plus"
+import { onBeforeUnmount, onMounted, ref, shallowRef, computed } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import "@wangeditor/editor/dist/css/style.css"
 import type { IEditorConfig, IToolbarConfig } from '@wangeditor/editor'
@@ -47,13 +47,13 @@ const editorConfig: Partial<IEditorConfig> = {
           if (file.size > 2 * 1024 * 1024) {
             processedFile = await compressImage(file)
           }
-          
+
           // 生成临时预览图片地址
           const blobUrl = URL.createObjectURL(processedFile)
-          
+
           // 保存文件引用，等发布时再上传
           pendingImages.value.set(blobUrl, processedFile)
-          
+
           // 插入临时图片
           insertFn(blobUrl)
         } catch (error) {
@@ -80,6 +80,16 @@ const article = ref<Partial<Article>>({
 // 封面图文件
 const coverImageFile = ref<File | null>(null)
 
+// 控制确认对话框显示
+const showPublishConfirm = ref(false)
+
+// 计算字数
+const wordCount = computed(() => {
+  // 移除 HTML 标签，只统计纯文本内容
+  const text = valueHtml.value.replace(/<[^>]*>/g, '')
+  return text.length
+})
+
 // 获取分类列表
 async function fetchCategories() {
   try {
@@ -90,15 +100,26 @@ async function fetchCategories() {
   }
 }
 
-// 获取文章详情
+// 获取文章数据
 async function fetchArticle(id: string) {
   loading.value = true
   try {
-    const { data } = await articleApi.getDetail(id)
-    article.value = data
-    valueHtml.value = data.content
+    const type = route.query.type as string
+    const isNew = route.query.isNew === 'true'
+    let response
+
+    if (type === 'draft' && !isNew) {
+      // 加载已有的草稿版本
+      response = await articleApi.getDraft(id)
+    } else {
+      // 加载正式文章
+      response = await articleApi.getDetail(id)
+    }
+
+    article.value = response.data
+    valueHtml.value = response.data.content
   } catch (error) {
-    ElMessage.error("获取文章详情失败")
+    ElMessage.error('加载文章失败')
   } finally {
     loading.value = false
   }
@@ -129,6 +150,9 @@ async function handleSave(status: "draft" | "published") {
     ElMessage.warning("请输入文章标题")
     return
   }
+  if (!article.value.category) {
+    return ElMessage.warning("请选择分类")
+  }
 
   loading.value = true
   try {
@@ -141,30 +165,32 @@ async function handleSave(status: "draft" | "published") {
     }
 
     // 如果有待上传的封面图文件，先上传图片
-    if (coverImageFile.value) {
-      const formData = new FormData()
-      formData.append("file", coverImageFile.value)
-      const { data } = await uploadImage(formData)
-      article.value.cover = data.file.url
-      // 清理临时文件
-      URL.revokeObjectURL(article.value.cover)
-      coverImageFile.value = null
-    }
+    // if (coverImageFile.value) {
+    //   const formData = new FormData()
+    //   formData.append("file", coverImageFile.value)
+    //   const { data } = await uploadImage(formData)
+    //   article.value.cover = data.file.url
+    //   // 清理临时文件
+    //   URL.revokeObjectURL(article.value.cover)
+    //   coverImageFile.value = null
+    // }
 
-    // 上传编辑器中的图片并替换URL
-    let content = valueHtml.value
-    for (const [blobUrl, file] of pendingImages.value.entries()) {
-      const formData = new FormData()
-      formData.append("file", file)
-      const { data } = await uploadImage(formData)
-      content = content.replace(blobUrl, data.file.url)
-      // 清理临时文件
-      URL.revokeObjectURL(blobUrl)
-    }
-    pendingImages.value.clear()
+    // // 上传编辑器中的图片并替换URL
+    // let content = valueHtml.value
+    // for (const [blobUrl, file] of pendingImages.value.entries()) {
+    //   const formData = new FormData()
+    //   formData.append("file", file)
+    //   const { data } = await uploadImage(formData)
+    //   content = content.replace(blobUrl, data.file.url)
+    //   // 清理临时文件
+    //   URL.revokeObjectURL(blobUrl)
+    // }
+    // pendingImages.value.clear()
 
+    // article.value.status = status
+    // article.value.content = content
+    await handleResources()
     article.value.status = status
-    article.value.content = content
 
     if (article.value._id) {
       await articleApi.update(article.value._id, article.value)
@@ -201,6 +227,85 @@ async function handleUploadCover(file: File) {
   }
 }
 
+// 保存为草稿版本
+async function saveAsDraft() {
+  if (!article.value.title?.trim()) {
+    ElMessage.warning("请输入文章标题")
+    return
+  }
+  if (!article.value.category) {
+    return ElMessage.warning("请选择分类")
+  }
+
+  if (article.value.category) {
+    const categoryPath = findCategoryPath(categories.value, article.value.category)
+    if (categoryPath) {
+      article.value.categoryName = categoryPath
+    }
+  }
+
+  loading.value = true
+  try {
+    // 处理图片等资源...
+    await handleResources()
+
+    // 创建/更新草稿
+    const response = await articleApi.createDraft({
+      ...article.value,
+      originalArticleId: route.query.id // 如果是编辑已有文章，传入原文ID
+    })
+
+    ElMessage.success('草稿保存成功')
+    router.push('/content/articles')
+  } catch (error) {
+    ElMessage.error('保存草稿失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+// 处理资源（图片等）上传
+async function handleResources() {
+  // 如果有待上传的封面图文件，先上传图片
+  if (coverImageFile.value) {
+    const formData = new FormData()
+    formData.append("file", coverImageFile.value)
+    const { data } = await uploadImage(formData)
+    article.value.cover = data.file.url
+    URL.revokeObjectURL(article.value.cover)
+    coverImageFile.value = null
+  }
+
+  // 上传编辑器中的图片并替换URL
+  let content = valueHtml.value
+  for (const [blobUrl, file] of pendingImages.value.entries()) {
+    const formData = new FormData()
+    formData.append("file", file)
+    const { data } = await uploadImage(formData)
+    content = content.replace(blobUrl, data.file.url)
+    URL.revokeObjectURL(blobUrl)
+  }
+  pendingImages.value.clear()
+  article.value.content = content
+}
+
+// 确认发布
+async function confirmPublish() {
+  showPublishConfirm.value = false
+  await handleSave('published')
+}
+
+// 处理发布按钮点击
+function handlePublishClick() {
+  if (!article.value.title?.trim()) {
+    return ElMessage.warning("请输入文章标题")
+  }
+  if (!article.value.category) {
+    return ElMessage.warning("请选择分类")
+  }
+  showPublishConfirm.value = true
+}
+
 onMounted(() => {
   fetchCategories()
   const id = route.query.id as string
@@ -229,14 +334,37 @@ onBeforeUnmount(() => {
         <el-button @click="router.back()">
           返回
         </el-button>
-        <!-- <el-button @click="handleSave('draft')">
-          保存草稿
-        </el-button> -->
-        <el-button type="primary" :loading="loading" @click="handleSave('published')">
+        <el-button @click="saveAsDraft">存为草稿</el-button>
+
+        <!-- 草稿发布按钮 -->
+        <el-button v-if="route.query.type === 'draft'" type="primary" :loading="loading" @click="handlePublishClick">
+          发布草稿
+        </el-button>
+
+        <!-- 普通发布按钮 -->
+        <el-button v-else type="primary" :loading="loading" @click="handleSave('published')">
           {{ article._id ? "更新文章" : "发布文章" }}
         </el-button>
       </div>
+
+      <!-- 添加字数统计 -->
+      <div class="word-count">
+        <el-tag size="large">{{ wordCount }} 字</el-tag>
+      </div>
     </div>
+
+    <!-- 发布确认对话框 -->
+    <el-dialog v-model="showPublishConfirm" title="发布确认" width="400px" :close-on-click-modal="false">
+      <span>确定要发布草稿吗？发布后将覆盖当前的线上版本。</span>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="showPublishConfirm = false">取消</el-button>
+          <el-button type="primary" @click="confirmPublish">
+            确认发布
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
 
     <div class="main">
       <!-- 左侧编辑区 -->
@@ -275,7 +403,7 @@ onBeforeUnmount(() => {
             <el-form-item label="封面图">
               <el-upload class="cover-uploader" :show-file-list="false" accept="image/*"
                 :before-upload="handleUploadCover">
-                <el-image v-if="article.cover" :src="article.cover" class="cover-image" />
+                <el-image v-if="article.cover" :src="article.cover" fit="cover" class="cover-image" />
                 <el-icon v-else class="upload-icon">
                   <Plus />
                 </el-icon>
@@ -304,12 +432,36 @@ onBeforeUnmount(() => {
   flex-direction: column;
   background-color: #f5f5f5;
 
+  // 确保编辑器内容不会遮挡弹窗
+  :deep(.el-overlay) {
+    z-index: 2001; // 设置比编辑器更高的层级
+  }
+
+  // 确保弹窗显示在最上层
+  :deep(.el-message-box__wrapper) {
+    z-index: 2002;
+  }
+
   .header {
     margin-bottom: 20px;
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 0 1rem;
+
+    .left {
+      display: flex;
+      gap: 10px;
+    }
+
+    .word-count {
+      .el-tag {
+        font-size: 14px;
+        padding: 0 12px;
+        height: 32px;
+        line-height: 32px;
+      }
+    }
   }
 
   .main {
@@ -327,15 +479,18 @@ onBeforeUnmount(() => {
 
       .title-input {
         margin-bottom: 1px;
+
         :deep(.el-input__wrapper) {
           box-shadow: none;
           border-radius: 0;
           padding: 0.75rem 1rem;
           background-color: white;
         }
+
         :deep(.el-input__inner) {
           font-size: 1.5rem;
           font-weight: 500;
+
           &::placeholder {
             color: #999;
           }
@@ -365,6 +520,7 @@ onBeforeUnmount(() => {
             button {
               padding: 0.25rem;
               border-radius: 4px;
+
               &:hover {
                 background-color: #f3f3f3;
               }

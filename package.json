@@ -22,11 +22,13 @@
   },
   "dependencies": {
     "@element-plus/icons-vue": "2.3.1",
+    "@types/echarts": "5.0.0",
     "@wangeditor/editor": "5.1.23",
     "@wangeditor/editor-for-vue": "5.1.12",
     "axios": "1.7.9",
     "dayjs": "1.11.13",
     "echarts": "5.6.0",
+    "echarts-for-react": "3.0.2",
     "element-plus": "2.9.0",
     "js-cookie": "3.0.5",
     "lodash-es": "4.17.21",

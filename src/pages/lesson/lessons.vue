@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue"
 import { ElMessage, ElMessageBox } from "element-plus"
-import { Search, Plus, Operation } from "@element-plus/icons-vue"
+import { Search, Plus, Operation, Delete } from "@element-plus/icons-vue"
 import { lessonApi } from "@/api/lesson"
+import { studentApi } from "@/api/student"
 import type { ElTable } from 'element-plus'
 
 interface Lesson {
@@ -235,6 +236,85 @@ const handleDrop = async (row: any) => {
   }
 }
 
+// 签到相关
+const attendanceDialogVisible = ref(false)
+const currentLesson = ref<any>(null)
+const selectedStudents = ref<string[]>([])
+const studentList = ref<any[]>([])
+const searchKeyword = ref("")
+
+// 打开签到对话框
+const handleAttendance = (lesson: any) => {
+  currentLesson.value = lesson
+  attendanceDialogVisible.value = true
+  // getStudentList()
+}
+
+// 获取学员列表
+const getStudentList = async () => {
+  try {
+    loading.value = true
+    const { data } = await studentApi.getList({
+      page: 1,
+      limit: 100,
+      status: 'active',
+      lessonId: currentLesson.value?._id
+    })
+    studentList.value = data.students
+  } catch (error) {
+    ElMessage.error("获取学员列表失败")
+  } finally {
+    loading.value = false
+  }
+}
+
+// 提交签到
+const handleSubmitAttendance = async () => {
+  if (!selectedStudents.value.length) {
+    ElMessage.warning("请选择要签到的学员")
+    return
+  }
+
+  try {
+    loading.value = true
+    await Promise.all(selectedStudents.value.map(studentId =>
+      studentApi.attendance({
+        studentId,
+        lessonId: currentLesson.value._id,
+        sessions: 1,
+        attendanceTime: new Date().toISOString()
+      })
+    ))
+    ElMessage.success("签到成功")
+    attendanceDialogVisible.value = false
+    selectedStudents.value = []
+  } catch (error) {
+    ElMessage.error("签到失败")
+  } finally {
+    loading.value = false
+  }
+}
+
+// 添加学员
+const handleAddStudent = () => {
+  // 实现添加学员的逻辑
+}
+
+// 移除学员
+const handleRemoveStudents = () => {
+  // 实现移除学员的逻辑
+}
+
+// 搜索学员
+const handleSearch = () => {
+  // 实现搜索学员的逻辑
+}
+
+// 选择学员
+const handleSelectionChange = (selection: any[]) => {
+  selectedStudents.value = selection.map(item => item._id)
+}
+
 onMounted(() => {
   getLessons()
 })
@@ -373,6 +453,13 @@ onMounted(() => {
         </el-table-column>
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
+            <el-button
+              type="success"
+              size="small"
+              @click="handleAttendance(row)"
+            >
+              签到
+            </el-button>
             <el-button type="primary" size="small" @click="handleEdit(row)">
               编辑
             </el-button>
@@ -462,6 +549,81 @@ onMounted(() => {
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
         <el-button type="primary" @click="handleSubmit">确定</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 签到对话框 -->
+    <el-dialog
+      v-model="attendanceDialogVisible"
+      title="课程签到"
+      width="800px"
+    >
+      <div class="attendance-dialog">
+        <!-- 顶部操作区 -->
+        <div class="operation-bar">
+          <div class="left">
+            <el-button type="primary" @click="handleAddStudent">
+              <el-icon><Plus /></el-icon>添加学员
+            </el-button>
+            <el-button
+              type="danger"
+              :disabled="!selectedStudents.length"
+              @click="handleRemoveStudents"
+            >
+              <el-icon><Delete /></el-icon>移除学员
+            </el-button>
+          </div>
+          <div class="right">
+            <el-input
+              v-model="searchKeyword"
+              placeholder="搜索学员"
+              clearable
+              @clear="handleSearch"
+              @input="handleSearch"
+            >
+              <template #prefix>
+                <el-icon><Search /></el-icon>
+              </template>
+            </el-input>
+          </div>
+        </div>
+
+        <!-- 学员列表 -->
+        <el-table
+          v-loading="loading"
+          :data="studentList"
+          @selection-change="handleSelectionChange"
+        >
+          <el-table-column type="selection" width="55" />
+          <el-table-column prop="name" label="姓名" />
+          <el-table-column prop="phone" label="手机号" />
+          <el-table-column label="剩余课时">
+            <template #default="{ row }">
+              {{ row.remainingSessions || 0 }}
+            </template>
+          </el-table-column>
+          <el-table-column label="账户余额">
+            <template #default="{ row }">
+              <span :class="{
+                'text-red-500': row.balance < 0,
+                'text-green-500': row.balance > 0
+              }">
+                ¥ {{ row.balance }}
+              </span>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+
+      <template #footer>
+        <el-button @click="attendanceDialogVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="loading"
+          @click="handleSubmitAttendance"
+        >
+          确认签到
+        </el-button>
       </template>
     </el-dialog>
   </div>
@@ -572,6 +734,28 @@ onMounted(() => {
     &.is-active {
       color: var(--el-color-primary);
     }
+  }
+}
+
+.attendance-dialog {
+  .operation-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+
+    .left {
+      display: flex;
+      gap: 12px;
+    }
+
+    .right {
+      width: 200px;
+    }
+  }
+
+  .el-table {
+    margin-bottom: 16px;
   }
 }
 </style>

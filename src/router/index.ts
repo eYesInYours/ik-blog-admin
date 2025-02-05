@@ -116,7 +116,7 @@ export const constantRoutes: RouteRecordRaw[] = [
     meta: {
       title: "课时管理",
       elIcon: "Timer",
-      roles: ["writer"] // 只有作者可以访问
+      // roles: ["writer"] // 只有作者可以访问
     },
     children: [
       {

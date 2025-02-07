@@ -19,6 +19,8 @@ interface Student {
   remark: string
   status: "active" | "inactive"
   createdAt: string
+  isChecked: boolean
+  lessonStats?: LessonStats
 }
 
 interface StudentLesson {
@@ -68,11 +70,19 @@ interface AnalysisData {
   }
 }
 
+// 学员课程统计类型
+interface LessonStats {
+  [lessonId: string]: {
+    remainingSessions: number
+    totalSessions: number
+  }
+}
+
 // API 接口
 export const studentApi = {
   // 获取学员列表
   getList(params: any) {
-    return request<ApiResponse<{ students: Student[]; pagination: any }>>({
+    return request<ApiResponse<{ students: Student[], pagination: any }>>({
       url: "/students",
       method: "GET",
       params

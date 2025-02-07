@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue"
+import { ref, onMounted, computed } from "vue"
 import { ElMessage, ElMessageBox } from "element-plus"
 import { Search, Plus, Operation, Delete } from "@element-plus/icons-vue"
 import { lessonApi } from "@/api/lesson"
 import { studentApi } from "@/api/student"
 import type { ElTable } from 'element-plus'
+import type { Student } from '@/api/student'
+import dayjs from 'dayjs'
 
 interface Lesson {
   _id: string
@@ -35,6 +37,19 @@ const queryParams = ref({
   stage: "",
   status: ""
 })
+
+// 重置查询参数
+const resetQueryParams = () => {
+  queryParams.value = {
+    page: 1,
+    limit: 10,
+    keyword: "",
+    type: "",
+    stage: "",
+    status: ""
+  }
+  getLessons()
+}
 
 // 获取课程列表
 const getLessons = async () => {
@@ -156,9 +171,6 @@ const handleSubmit = async () => {
 // 删除课程
 const handleDelete = async (id: string) => {
   try {
-    await ElMessageBox.confirm("确认删除该课程?", "提示", {
-      type: "warning"
-    })
     await lessonApi.lesson.delete(id)
     ElMessage.success("删除成功")
     getLessons()
@@ -238,82 +250,234 @@ const handleDrop = async (row: any) => {
 
 // 签到相关
 const attendanceDialogVisible = ref(false)
-const currentLesson = ref<any>(null)
-const selectedStudents = ref<string[]>([])
-const studentList = ref<any[]>([])
+const currentLesson = ref<Lesson | null>(null)
+const selectedAttendanceStudents = ref<Student[]>([])
+const attendanceStudents = ref<Student[]>([])
 const searchKeyword = ref("")
+
+// 学员选择对话框
+const studentSelectVisible = ref(false)
+const selectedLessonId = ref('')
+const studentList = ref<Student[]>([])
+const selectedEnrollStudents = ref<Student[]>([])
+const studentLoading = ref(false)
+const studentTotal = ref(0)
+const hasMore = ref(true)
+
+// 学员查询参数
+const studentQueryParams = ref({
+  page: 1,
+  limit: 10,
+  keyword: '',
+  lessonId: '', // 用于过滤未关联的学员
+  status: 'active',
+  deleted: false
+})
+
+// 获取课程关联的学员列表
+const getAttendanceStudents = async () => {
+  try {
+    const { data } = await studentApi.getList({
+      lessonId: currentLesson.value._id,
+      keyword: searchKeyword.value
+    })
+    attendanceStudents.value = data.students.map(student => ({
+      ...student,
+      remainingSessions: student.lessonStats?.[currentLesson.value._id]?.remainingSessions || 0,
+      totalSessions: student.lessonStats?.[currentLesson.value._id]?.totalSessions || 0
+    }))
+  } catch (error) {
+    ElMessage.error('获取学员列表失败')
+    console.error(error)
+  }
+}
 
 // 打开签到对话框
 const handleAttendance = (lesson: any) => {
   currentLesson.value = lesson
   attendanceDialogVisible.value = true
-  // getStudentList()
+  getAttendanceStudents() // 获取已关联的学员
 }
 
-// 获取学员列表
-const getStudentList = async () => {
-  try {
-    loading.value = true
-    const { data } = await studentApi.getList({
-      page: 1,
-      limit: 100,
-      status: 'active',
-      lessonId: currentLesson.value?._id
-    })
-    studentList.value = data.students
-  } catch (error) {
-    ElMessage.error("获取学员列表失败")
-  } finally {
-    loading.value = false
-  }
+// 处理签到学员选择变化
+const handleAttendanceSelectionChange = (selection: any[]) => {
+  selectedAttendanceStudents.value = selection
 }
 
-// 提交签到
+// 签到相关
+const attendanceForm = ref({
+  studentIds: [] as string[],
+  attendanceTime: dayjs().format('YYYY-MM-DD HH:mm:ss'),
+  sessions: 1,
+  remark: ''
+})
+
+// 计算每个学员的扣费金额
+const calculateStudentAmount = computed(() => {
+  if (!currentLesson.value || !attendanceForm.value.sessions) return 0
+  return currentLesson.value.price * attendanceForm.value.sessions
+})
+
+// 计算总扣费金额
+const calculateAmount = computed(() => {
+  if (!currentLesson.value || !attendanceForm.value.sessions) return 0
+  return currentLesson.value.price * attendanceForm.value.sessions
+})
+
+// 处理签到提交
 const handleSubmitAttendance = async () => {
-  if (!selectedStudents.value.length) {
-    ElMessage.warning("请选择要签到的学员")
-    return
-  }
+  try {
+    if (!selectedAttendanceStudents.value.length) {
+      return ElMessage.warning('请选择要签到的学员')
+    }
 
+    // 打开签到确认对话框
+    attendanceForm.value.studentIds = selectedAttendanceStudents.value.map(s => s._id)
+    attendanceConfirmVisible.value = true
+  } catch (error) {
+    ElMessage.error('签到失败')
+    console.error(error)
+  }
+}
+
+// 确认签到
+const handleConfirmAttendance = async () => {
   try {
     loading.value = true
-    await Promise.all(selectedStudents.value.map(studentId =>
+
+    // 为每个学员创建签到记录
+    await Promise.all(selectedAttendanceStudents.value.map(student => 
       studentApi.attendance({
-        studentId,
+        studentId: student._id,
         lessonId: currentLesson.value._id,
-        sessions: 1,
-        attendanceTime: new Date().toISOString()
+        sessions: attendanceForm.value.sessions,
+        attendanceTime: attendanceForm.value.attendanceTime,
+        remark: attendanceForm.value.remark.trim() || undefined
       })
     ))
-    ElMessage.success("签到成功")
+
+    ElMessage.success('签到成功')
+    attendanceConfirmVisible.value = false
     attendanceDialogVisible.value = false
-    selectedStudents.value = []
+    selectedAttendanceStudents.value = []
+    await getAttendanceStudents()
   } catch (error) {
-    ElMessage.error("签到失败")
+    ElMessage.error('签到失败')
+    console.error(error)
   } finally {
     loading.value = false
   }
 }
 
-// 添加学员
-const handleAddStudent = () => {
-  // 实现添加学员的逻辑
+// 获取未关联学员列表
+const getStudents = async () => {
+  try {
+    studentLoading.value = true
+    const params = {
+      ...studentQueryParams.value,
+      excludeLessonId: selectedLessonId.value
+    }
+    const { data } = await studentApi.getList(params)
+    if (studentQueryParams.value.page === 1) {
+      studentList.value = data.students.map(item => ({
+        ...item,
+        isChecked: false
+      }))
+    } else {
+      studentList.value.push(...data.students.map(item => ({
+        ...item,
+        isChecked: false
+      })))
+    }
+    studentTotal.value = data.pagination.total
+    hasMore.value = studentList.value.length < data.pagination.total
+  } catch (error) {
+    ElMessage.error('获取学员列表失败')
+    console.error(error)
+  } finally {
+    studentLoading.value = false
+  }
 }
 
-// 移除学员
-const handleRemoveStudents = () => {
-  // 实现移除学员的逻辑
+// 打开学员选择对话框
+const handleAddStudent = (lesson: Lesson) => {
+  selectedLessonId.value = lesson._id
+  studentSelectVisible.value = true
+  studentQueryParams.value.page = 1
+  studentQueryParams.value.keyword = ''
+  getStudents()
 }
 
-// 搜索学员
+// 处理学员选择变化
+const handleEnrollSelectionChange = (selection: any[]) => {
+  selectedEnrollStudents.value = selection
+}
+
+// 提交选中的学员
+const handleSubmitStudents = async () => {
+  if (!selectedEnrollStudents.value.length) {
+    ElMessage.warning('请选择要添加的学员')
+    return
+  }
+  
+  try {
+    studentLoading.value = true
+    await lessonApi.lesson.addStudents({
+      lessonId: selectedLessonId.value,
+      studentIds: selectedEnrollStudents.value.map(student => student._id)
+    })
+    ElMessage.success('添加学员成功')
+    studentSelectVisible.value = false
+    selectedEnrollStudents.value = []
+    await getAttendanceStudents()
+  } catch (error) {
+    ElMessage.error('添加学员失败')
+    console.error(error)
+  } finally {
+    studentLoading.value = false
+  }
+}
+
+// 处理表格滚动到底部
+const handleScrollEnd = () => {
+  if (!studentLoading.value && hasMore.value) {
+    studentQueryParams.value.page++
+    getStudents()
+  }
+}
+
+// 处理学员搜索
+const handleStudentSearch = () => {
+  studentQueryParams.value.page = 1
+  studentList.value = []
+  hasMore.value = true
+  getStudents()
+}
+
+// 处理学员分页变化
+const handleStudentPageChange = (page: number) => {
+  studentQueryParams.value.page = page
+  getStudents()
+}
+
+// 处理搜索
 const handleSearch = () => {
-  // 实现搜索学员的逻辑
+  getAttendanceStudents()
 }
 
-// 选择学员
-const handleSelectionChange = (selection: any[]) => {
-  selectedStudents.value = selection.map(item => item._id)
+// 处理退出课程
+const handleQuitLesson = async (student: Student) => {
+  try {
+    await lessonApi.lesson.removeStudent(currentLesson.value._id, student._id)
+    ElMessage.success('退出课程成功')
+    getAttendanceStudents()
+  } catch (error) {
+    ElMessage.error('退出课程失败')
+    console.error(error)
+  }
 }
+
+const attendanceConfirmVisible = ref(false)
 
 onMounted(() => {
   getLessons()
@@ -325,22 +489,23 @@ onMounted(() => {
     <!-- 搜索工具栏 -->
     <el-card class="search-wrapper">
       <el-form :inline="true" :model="queryParams">
-        <el-form-item label="关键词">
+        <el-form-item>
           <el-input
             v-model="queryParams.keyword"
-            placeholder="课程名称/描述"
+            placeholder="搜索课程名称"
             clearable
+            @input="getLessons"
+            @clear="getLessons"
             @keyup.enter="getLessons"
-          />
-        </el-form-item>
-        <el-form-item label="课程类型">
-          <el-select
-            style="width: 160px"
-            v-model="queryParams.type"
-            placeholder="请选择课程类型"
-            clearable
           >
-            <el-option label="全部" value="" />
+            <template #prefix>
+
+              <el-icon><Search /></el-icon>
+            </template>
+          </el-input>
+        </el-form-item>
+        <el-form-item>
+          <el-select v-model="queryParams.type" placeholder="课程类型" clearable @change="getLessons" style="width: 160px">
             <el-option
               v-for="option in typeOptions"
               :key="option.value"
@@ -349,14 +514,8 @@ onMounted(() => {
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="课程阶段">
-          <el-select
-            style="width: 160px"
-            v-model="queryParams.stage"
-            placeholder="请选择课程阶段"
-            clearable
-          >
-            <el-option label="全部" value="" />
+        <el-form-item>
+          <el-select v-model="queryParams.stage" placeholder="课程阶段" clearable @change="getLessons" style="width: 160px">
             <el-option
               v-for="option in stageOptions"
               :key="option.value"
@@ -365,25 +524,9 @@ onMounted(() => {
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="状态">
-          <el-select
-            style="width: 160px"
-            v-model="queryParams.status"
-            placeholder="请选择状态"
-            clearable
-          >
-            <el-option label="全部" value="" />
-            <el-option label="启用" value="active" />
-            <el-option label="禁用" value="inactive" />
-          </el-select>
-        </el-form-item>
         <el-form-item>
-          <el-button type="primary" :icon="Search" @click="getLessons">
-            搜索
-          </el-button>
-          <el-button type="success" :icon="Plus" @click="handleCreate">
-            新建
-          </el-button>
+          <el-button @click="resetQueryParams">重置</el-button>
+          <el-button type="success" :icon="Plus" @click="handleCreate">新增课程</el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -562,15 +705,8 @@ onMounted(() => {
         <!-- 顶部操作区 -->
         <div class="operation-bar">
           <div class="left">
-            <el-button type="primary" @click="handleAddStudent">
+            <el-button type="primary" @click="handleAddStudent(currentLesson)">
               <el-icon><Plus /></el-icon>添加学员
-            </el-button>
-            <el-button
-              type="danger"
-              :disabled="!selectedStudents.length"
-              @click="handleRemoveStudents"
-            >
-              <el-icon><Delete /></el-icon>移除学员
             </el-button>
           </div>
           <div class="right">
@@ -591,15 +727,18 @@ onMounted(() => {
         <!-- 学员列表 -->
         <el-table
           v-loading="loading"
-          :data="studentList"
-          @selection-change="handleSelectionChange"
+          :data="attendanceStudents"
+          height="400"
+          @selection-change="handleAttendanceSelectionChange"
         >
           <el-table-column type="selection" width="55" />
           <el-table-column prop="name" label="姓名" />
           <el-table-column prop="phone" label="手机号" />
-          <el-table-column label="剩余课时">
+          <el-table-column label="状态" width="100">
             <template #default="{ row }">
-              {{ row.remainingSessions || 0 }}
+              <el-tag :type="row.status === 'active' ? 'success' : 'info'">
+                {{ row.status === 'active' ? '在读' : '结业' }}
+              </el-tag>
             </template>
           </el-table-column>
           <el-table-column label="账户余额">
@@ -612,6 +751,25 @@ onMounted(() => {
               </span>
             </template>
           </el-table-column>
+          <el-table-column label="操作" width="120" fixed="right">
+            <template #default="{ row }">
+              <el-popconfirm
+                title="确认将该学员从课程中移除?"
+                confirm-button-text="确定"
+                cancel-button-text="取消"
+                @confirm="handleQuitLesson(row)"
+              >
+                <template #reference>
+                  <el-button
+                    type="danger"
+                    link
+                  >
+                    退出课程
+                  </el-button>
+                </template>
+              </el-popconfirm>
+            </template>
+          </el-table-column>
         </el-table>
       </div>
 
@@ -621,6 +779,175 @@ onMounted(() => {
           type="primary"
           :loading="loading"
           @click="handleSubmitAttendance"
+        >
+          确认签到
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 学员选择对话框 -->
+    <el-dialog
+      v-model="studentSelectVisible"
+      title="选择学员"
+      width="800px"
+    >
+      <div class="student-select-dialog">
+        <!-- 搜索栏 -->
+        <div class="search-bar">
+          <el-form :inline="true" :model="studentQueryParams">
+            <el-form-item>
+              <el-input
+                v-model="studentQueryParams.keyword"
+                placeholder="搜索学员姓名/手机号"
+                clearable
+                @clear="handleStudentSearch"
+                @keyup.enter="handleStudentSearch"
+              >
+                <template #prefix>
+                  <el-icon><Search /></el-icon>
+                </template>
+              </el-input>
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" :icon="Search" @click="handleStudentSearch">
+                搜索
+              </el-button>
+            </el-form-item>
+          </el-form>
+        </div>
+        
+        <!-- 学员列表 -->
+        <el-table
+          v-loading="studentLoading"
+          :data="studentList"
+          height="400"
+          :infinite-scroll-disabled="!hasMore"
+          :infinite-scroll-distance="10"
+          @scroll="handleScrollEnd"
+          @selection-change="handleEnrollSelectionChange"
+        >
+          <el-table-column type="selection" width="55">
+          </el-table-column>
+          <el-table-column prop="name" label="姓名" />
+          <el-table-column prop="phone" label="手机号" />
+          <el-table-column prop="balance" label="账户余额">
+            <template #default="{ row }">
+              <span :class="{
+                'text-red-500': row.balance < 0,
+                'text-green-500': row.balance > 0
+              }">
+                ¥ {{ row.balance }}
+              </span>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" width="100">
+            <template #default="{ row }">
+              <el-tag :type="row.status === 'active' ? 'success' : 'info'">
+                {{ row.status === 'active' ? '在读' : '结业' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="注册时间">
+            <template #default="{ row }">
+              {{ formatDateTime(row.createdAt) }}
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+      
+      <template #footer>
+        <el-button @click="studentSelectVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="studentLoading"
+          :disabled="!selectedEnrollStudents.length"
+          @click="handleSubmitStudents"
+        >
+          确定 ({{ selectedEnrollStudents.length }})
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 签到确认对话框 -->
+    <el-dialog
+      v-model="attendanceConfirmVisible"
+      title="确认签到"
+      width="500px"
+    >
+      <!-- 课程信息展示 -->
+      <div class="attendance-info">
+        <div class="info-line">
+          <span class="info-label">课程：</span>
+          <el-text>{{ currentLesson?.name }}</el-text>
+        </div>
+        <div class="info-line">
+          <span class="info-label">单课时价格：</span>
+          <el-text type="danger">¥{{ currentLesson?.price }}</el-text>
+        </div>
+        <div class="info-line">
+          <span class="info-label">课时：</span>
+          <el-text>{{ attendanceForm.sessions }}节</el-text>
+        </div>
+        <div class="info-line">
+          <span class="info-label">选中学员：</span>
+          <el-text>{{ selectedAttendanceStudents.length }}人</el-text>
+          <div class="selected-students">
+            <div v-for="student in selectedAttendanceStudents" :key="student._id" class="student-item">
+              <span>{{ student.name }}</span>
+              <span class="deduction-info">
+                扣费: <span class="text-danger">¥{{ calculateStudentAmount }}</span>
+                ({{ attendanceForm.sessions }}课时 × ¥{{ currentLesson?.price }})
+              </span>
+              <span :class="{ 'text-danger': student.balance < calculateStudentAmount }">
+                余额: ¥{{ student.balance }}
+              </span>
+            </div>
+          </div>
+        </div>
+        <div class="info-line">
+          <span class="info-label">每人扣费金额：</span>
+          <el-text type="danger">¥{{ calculateAmount }}</el-text>
+          <span class="amount-detail">
+            ({{ attendanceForm.sessions }}课时 × ¥{{ currentLesson?.price }})
+          </span>
+        </div>
+      </div>
+      <el-divider />
+      
+      <el-form :model="attendanceForm" label-width="100px">
+        <el-form-item label="签到时间" required>
+          <el-date-picker
+            v-model="attendanceForm.attendanceTime"
+            type="datetime"
+            placeholder="选择签到时间"
+            format="YYYY-MM-DD HH:mm:ss"
+            value-format="YYYY-MM-DD HH:mm:ss"
+          />
+        </el-form-item>
+        <el-form-item label="课时" required>
+          <el-input-number
+            v-model="attendanceForm.sessions"
+            :min="1"
+            :precision="0"
+            @change="calculateAmount"
+          />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input
+            v-model="attendanceForm.remark"
+            type="textarea"
+            :rows="2"
+            placeholder="请输入备注信息"
+          />
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="attendanceConfirmVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="loading"
+          @click="handleConfirmAttendance"
         >
           确认签到
         </el-button>
@@ -756,6 +1083,59 @@ onMounted(() => {
 
   .el-table {
     margin-bottom: 16px;
+  }
+}
+
+.student-select-dialog {
+  .search-bar {
+    margin-bottom: 16px;
+    
+    .el-input {
+      width: 300px;
+    }
+  }
+  
+  .el-table {
+    margin-bottom: 16px;
+  }
+}
+
+.attendance-info {
+  .info-line {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 12px;
+    
+    .info-label {
+      width: 100px;
+      color: var(--el-text-color-secondary);
+    }
+
+    .amount-detail {
+      margin-left: 8px;
+      font-size: 13px;
+      color: var(--el-text-color-secondary);
+    }
+
+    .selected-students {
+      margin-left: 8px;
+      
+      .student-item {
+        font-size: 13px;
+        line-height: 1.8;
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        
+        .deduction-info {
+          color: var(--el-text-color-regular);
+        }
+        
+        .text-danger {
+          color: var(--el-color-danger);
+        }
+      }
+    }
   }
 }
 </style>

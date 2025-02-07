@@ -6,11 +6,13 @@ import { studentApi } from "@/api/student"
 import { lessonApi } from "@/api/lesson"
 import * as echarts from 'echarts'
 import dayjs from 'dayjs'
+import type { Lesson } from '@/api/lesson'
 
 // 表格数据
 const tableData = ref([])
 const loading = ref(false)
 const total = ref(0)
+const lessonList = ref<Lesson[]>([])
 
 // 查询参数
 const queryParams = ref({
@@ -18,8 +20,22 @@ const queryParams = ref({
   limit: 10,
   keyword: "",
   status: "active",
-  deleted: false as boolean | '' // 添加删除状态查询
+  deleted: false as boolean | '', // 添加删除状态查询
+  lessonId: "" // 添加课程筛选
 })
+
+// 获取课程列表
+const getLessons = async () => {
+  try {
+    const { data } = await lessonApi.lesson.getList({ 
+      status: 'active',
+      limit: 999 // 获取所有有效课程
+    })
+    lessonList.value = data.lessons
+  } catch (error) {
+    console.error('获取课程列表失败:', error)
+  }
+}
 
 // 获取学员列表
 const getStudents = async () => {
@@ -36,17 +52,6 @@ const getStudents = async () => {
   }
 }
 
-// 课程列表
-const lessonList = ref([])
-const getLessons = async () => {
-  try {
-    const { data } = await lessonApi.lesson.getList({ status: "active" })
-    lessonList.value = data.lessons
-  } catch (error) {
-    console.error(error)
-  }
-}
-
 // 对话框控制
 const dialogVisible = ref(false)
 const dialogType = ref<"create" | "edit">("create")
@@ -58,7 +63,8 @@ const formData = ref({
   name: "",
   phone: "",
   email: "",
-  remark: ""
+  remark: "",
+  lessonId: ""
 })
 
 // 表单验证规则
@@ -78,7 +84,8 @@ const handleCreate = () => {
     name: "",
     phone: "",
     email: "",
-    remark: ""
+    remark: "",
+    lessonId: ""
   }
   dialogVisible.value = true
 }
@@ -91,7 +98,8 @@ const handleEdit = (row: any) => {
     name: row.name,
     phone: row.phone,
     email: row.email || "",
-    remark: row.remark || ""
+    remark: row.remark || "",
+    lessonId: row.lessons?.[0]?.lessonId || ""
   }
   dialogVisible.value = true
 }
@@ -108,7 +116,8 @@ const handleSubmit = async () => {
         name: formData.value.name,
         phone: formData.value.phone,
         email: formData.value.email,
-        remark: formData.value.remark
+        remark: formData.value.remark,
+        lessonId: formData.value.lessonId
       })
       ElMessage.success("更新成功")
     }
@@ -152,11 +161,18 @@ const handleAttendance = (student: any) => {
   currentStudent.value = student
   attendanceForm.value = {
     studentId: student._id,
-    lessonId: "",
-    attendanceTime: dayjs().format('YYYY-MM-DD HH:mm:ss'),
+    lessonId: student.lessons?.[0]?.lessonId || "",
+    attendanceTime: dayjs().format('YYYY-MM-DD HH:mm'),
     sessions: 1,
     amount: 0,
     remark: ""
+  }
+  // 若有student.lessons，则初始化selectedLesson
+  if (student.lessons?.length) {
+    selectedLesson.value = lessonList.value.find(item => item._id === student.lessons[0].lessonId)
+    if (selectedLesson.value) {
+      calculateAmount()
+    }
   }
   attendanceDialogVisible.value = true
 }
@@ -611,6 +627,19 @@ const handleStatusChange = async (student: any) => {
     ElMessage.error('状态更新失败')
   }
 }
+
+// 重置查询参数
+const resetQueryParams = () => {
+  queryParams.value = {
+    page: 1,
+    limit: 10,
+    keyword: "",
+    status: "active",
+    deleted: false,
+    lessonId: ""
+  }
+  getStudents()
+}
 </script>
 
 <template>
@@ -619,23 +648,54 @@ const handleStatusChange = async (student: any) => {
     <el-card class="search-wrapper">
       <el-form :inline="true" :model="queryParams">
         <el-form-item label="关键词">
-          <el-input v-model="queryParams.keyword" placeholder="姓名/手机号" :prefix-icon="Search" clearable
-            @keyup.enter="getStudents" />
+          <el-input 
+            v-model="queryParams.keyword" 
+            placeholder="姓名/手机号" 
+            :prefix-icon="Search" 
+            clearable
+            @input="getStudents"
+            @clear="getStudents"
+            @keyup.enter="getStudents"
+          />
+        </el-form-item>
+        <el-form-item label="关联课程">
+
+          <el-select 
+            v-model="queryParams.lessonId" 
+            placeholder="选择课程" 
+            clearable 
+            style="width: 200px" 
+            @change="getStudents"
+          >
+            <el-option v-for="lesson in lessonList" :key="lesson._id" :label="lesson.name" :value="lesson._id" />
+          </el-select>
         </el-form-item>
         <el-form-item label="状态" width="160">
-          <el-select v-model="queryParams.status" placeholder="状态" clearable style="width: 160px;">
+          <el-select 
+            v-model="queryParams.status" 
+            placeholder="状态" 
+            clearable 
+            style="width: 160px;" 
+            @change="getStudents"
+          >
             <el-option label="在读" value="active" />
             <el-option label="结业" value="inactive" />
           </el-select>
         </el-form-item>
         <el-form-item label="删除状态">
-          <el-select v-model="queryParams.deleted" placeholder="删除状态" clearable style="width: 160px;">
+          <el-select 
+            v-model="queryParams.deleted" 
+            placeholder="删除状态" 
+            clearable 
+            style="width: 160px;"
+            @change="getStudents"
+          >
             <el-option label="正常" :value="false" />
             <el-option label="已删除" :value="true" />
           </el-select>
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" :icon="Search" @click="getStudents">搜索</el-button>
+          <el-button @click="resetQueryParams">重置</el-button>
           <el-button type="success" :icon="Plus" @click="handleCreate">新增学员</el-button>
         </el-form-item>
       </el-form>
@@ -727,10 +787,30 @@ const handleStatusChange = async (student: any) => {
           <el-input v-model="formData.phone" />
         </el-form-item>
         <el-form-item label="邮箱" prop="email">
-          <el-input v-model="formData.email" />
+          <el-input v-model="formData.email" placeholder="请输入邮箱" />
+        </el-form-item>
+        <el-form-item label="关联课程">
+          <el-select 
+            v-model="formData.lessonId" 
+            placeholder="选择关联课程" 
+            clearable
+            style="width: 100%"
+          >
+            <el-option
+              v-for="lesson in lessonList"
+              :key="lesson._id"
+              :label="lesson.name"
+              :value="lesson._id"
+            />
+          </el-select>
         </el-form-item>
         <el-form-item label="备注" prop="remark">
-          <el-input v-model="formData.remark" type="textarea" :rows="3" />
+          <el-input
+            v-model="formData.remark"
+            type="textarea"
+            :rows="2"
+            placeholder="请输入备注信息"
+          />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -763,6 +843,7 @@ const handleStatusChange = async (student: any) => {
               <span class="text-gray ml-2">(¥{{ lesson.price }}/课时)</span>
             </el-option>
           </el-select>
+          <div class="form-tip">若学员和多个课程关联，本次签到将默认选择第一个</div>
         </el-form-item>
         <el-form-item label="签到时间" required>
           <el-date-picker v-model="attendanceForm.attendanceTime" type="datetime" placeholder="选择日期时间"
@@ -1405,5 +1486,12 @@ const handleStatusChange = async (student: any) => {
 
 :deep(.el-switch__label.is-active) {
   color: var(--el-color-primary);
+}
+
+.form-tip {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-top: 4px;
+  line-height: 1.4;
 }
 </style>

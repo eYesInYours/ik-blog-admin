@@ -125,6 +125,25 @@ export const lessonApi = {
         method: 'post',
         data
       })
+    },
+
+    // 添加学员到课程
+    addStudents: (data: { lessonId: string; studentIds: string[] }) => {
+      return request({
+        url: `/lessons/enroll/${data.lessonId}`,
+        method: 'POST',
+        data: {
+          studentIds: data.studentIds
+        }
+      })
+    },
+
+    // 移除学员
+    removeStudent(lessonId: string, studentId: string) {
+      return request<ApiResponse<void>>({
+        url: `/lessons/${lessonId}/students/${studentId}`,
+        method: 'DELETE'
+      })
     }
   },
 

@@ -3,13 +3,14 @@ import { useUserStore } from "@/pinia/stores/user"
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { studentApi } from '@/api/student'
 import * as echarts from 'echarts'
-import { Plus, Minus, Money, QuestionFilled } from '@element-plus/icons-vue'
+import { Plus, Minus, Money, QuestionFilled, ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
+import dayjs from 'dayjs'
 
 const userStore = useUserStore()
 const isAdmin = userStore.roles.includes("admin")
 
 const timeRange = ref<'week' | 'month' | 'year'>('month')
-const selectedDate = ref<Date>(new Date())
+const selectedDate = ref(dayjs())
 const chartRef = ref<HTMLElement>()
 let chart: echarts.ECharts | null = null
 
@@ -31,22 +32,92 @@ const incomeData = ref({
 
 const chartMetrics = ref(['recharge', 'consumption', 'sessions'])
 
-// 根据时间范围设置日期选择器类型
-const datePickerType = computed(() => {
+// 添加计算属性
+const currentPeriodText = computed(() => {
   switch (timeRange.value) {
     case 'week':
+      return `第${selectedDate.value.week()}周`
+    case 'month':
+      return selectedDate.value.format('YYYY年MM月')
+    case 'year':
+      return selectedDate.value.format('YYYY年')
+  }
+})
+
+// 添加日期选择器相关的计算属性
+const datePickerType = computed(() => {
+  switch (timeRange.value) {
     case 'month':
       return 'month'
     case 'year':
       return 'year'
     default:
-      return 'month'
+      return 'date'
   }
 })
 
-// 处理时间范围变化
+const dateFormat = computed(() => {
+  switch (timeRange.value) {
+    case 'month':
+      return 'YYYY年MM月'
+    case 'year':
+      return 'YYYY年'
+    default:
+      return 'YYYY-MM-DD'
+  }
+})
+
+const valueFormat = computed(() => {
+  switch (timeRange.value) {
+    case 'month':
+      return 'YYYY-MM'
+    case 'year':
+      return 'YYYY'
+    default:
+      return 'YYYY-MM-DD'
+  }
+})
+
+// 添加切换周期的方法
+const handlePrevPeriod = () => {
+  switch (timeRange.value) {
+    case 'week':
+      selectedDate.value = selectedDate.value.subtract(1, 'week')
+      break
+    case 'month':
+      selectedDate.value = selectedDate.value.subtract(1, 'month')
+      break
+    case 'year':
+      selectedDate.value = selectedDate.value.subtract(1, 'year')
+      break
+  }
+  getAnalysisData()
+}
+
+const handleNextPeriod = () => {
+  const nextDate = timeRange.value === 'week'
+    ? selectedDate.value.add(1, 'week')
+    : timeRange.value === 'month'
+      ? selectedDate.value.add(1, 'month')
+      : selectedDate.value.add(1, 'year')
+
+  // 不允许选择未来的日期
+  if (nextDate.isAfter(dayjs())) return
+
+  selectedDate.value = nextDate
+  getAnalysisData()
+}
+
+// 修改时间范围变化的处理方法
 const handleTimeRangeChange = () => {
-  selectedDate.value = new Date() // 重置为当前日期
+  selectedDate.value = dayjs() // 重置为当前日期
+  getAnalysisData()
+}
+
+// 修改日期变化的处理方法
+const handleDateChange = (value: any) => {
+  if (!value) return
+  selectedDate.value = dayjs(value)
   getAnalysisData()
 }
 
@@ -55,7 +126,7 @@ const getAnalysisData = async () => {
   try {
     const { data } = await studentApi.getIncomeAnalysis({
       timeRange: timeRange.value,
-      date: selectedDate.value?.toISOString()
+      date: selectedDate.value.toISOString()
     })
     incomeData.value = data
     updateChart(data.trend)
@@ -262,12 +333,33 @@ onUnmounted(() => {
               <el-checkbox label="sessions">课时数</el-checkbox>
             </el-checkbox-group>
             <div class="date-range">
-              <el-radio-group v-model="timeRange" @change="getAnalysisData">
+              <el-radio-group v-model="timeRange" @change="handleTimeRangeChange">
                 <el-radio-button label="week">周</el-radio-button>
                 <el-radio-button label="month">月</el-radio-button>
                 <el-radio-button label="year">年</el-radio-button>
               </el-radio-group>
-              <el-date-picker v-model="selectedDate" :type="datePickerType" @change="getAnalysisData" />
+              
+              <div class="period-selector">
+                <el-button :icon="ArrowLeft" @click="handlePrevPeriod" />
+                <template v-if="timeRange === 'week'">
+                  <span class="period-text">{{ currentPeriodText }}</span>
+                </template>
+                <template v-else>
+                  <el-date-picker
+                    v-model="selectedDate"
+                    :type="datePickerType"
+                    :format="dateFormat"
+                    :value-format="valueFormat"
+                    @change="handleDateChange"
+                    :placeholder="currentPeriodText"
+                  />
+                </template>
+                <el-button 
+                  :icon="ArrowRight" 
+                  @click="handleNextPeriod"
+                  :disabled="selectedDate.isAfter(dayjs().subtract(1, timeRange))"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -424,6 +516,43 @@ onUnmounted(() => {
       display: flex;
       align-items: center;
       gap: 24px;
+    }
+  }
+
+  .period-selector {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    .period-text {
+      min-width: 100px;
+      text-align: center;
+      font-size: 14px;
+    }
+
+    :deep(.el-date-picker) {
+      width: 140px;
+    }
+
+    :deep(.el-input__wrapper) {
+      padding: 0 8px;
+    }
+
+    :deep(.el-input__inner) {
+      text-align: center;
+      font-size: 14px;
+    }
+  }
+
+  .chart-controls {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+
+    .date-range {
+      display: flex;
+      align-items: center;
+      gap: 16px;
     }
   }
 }

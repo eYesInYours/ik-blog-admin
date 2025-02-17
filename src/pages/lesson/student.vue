@@ -21,7 +21,8 @@ const queryParams = ref({
   keyword: "",
   status: "active",
   deleted: false as boolean | '', // 添加删除状态查询
-  lessonId: "" // 添加课程筛选
+  lessonId: "", // 添加课程筛选
+  balanceType: "" // 添加余额类型筛选
 })
 
 // 获取课程列表
@@ -636,7 +637,8 @@ const resetQueryParams = () => {
     keyword: "",
     status: "active",
     deleted: false,
-    lessonId: ""
+    lessonId: "",
+    balanceType: ""
   }
   getStudents()
 }
@@ -659,7 +661,6 @@ const resetQueryParams = () => {
           />
         </el-form-item>
         <el-form-item label="关联课程">
-
           <el-select 
             v-model="queryParams.lessonId" 
             placeholder="选择课程" 
@@ -668,6 +669,18 @@ const resetQueryParams = () => {
             @change="getStudents"
           >
             <el-option v-for="lesson in lessonList" :key="lesson._id" :label="lesson.name" :value="lesson._id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="余额状态">
+          <el-select 
+            v-model="queryParams.balanceType" 
+            placeholder="余额筛选" 
+            clearable 
+            style="width: 160px;"
+            @change="getStudents"
+          >
+            <el-option label="余额充足" value="positive" />
+            <el-option label="余额不足" value="negative" />
           </el-select>
         </el-form-item>
         <el-form-item label="状态" width="160">

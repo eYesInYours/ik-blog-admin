@@ -144,7 +144,69 @@ export const lessonApi = {
         url: `/lessons/${lessonId}/students/${studentId}`,
         method: 'DELETE'
       })
-    }
+    },
+
+    // 课程批量签到
+    batchAttendance(lessonId: string, data: {
+      studentIds: string[]
+      sessions: number
+      attendanceTime?: string
+      remark?: string
+    }) {
+      return request<ApiResponse<{
+        batchId: string
+        records: any[]
+      }>>({
+        url: `/lessons/${lessonId}/batchAttendance`,
+        method: 'POST',
+        data
+      })
+    },
+
+    // 获取课程签到记录
+    getAttendanceRecords(lessonId: string, params: {
+      page: number
+      limit: number
+    }) {
+      return request<ApiResponse<{
+        records: {
+          batchId: string
+          recordTime: string
+          students: {
+            _id: string
+            name: string
+            sessions: number
+            amount: number
+          }[]
+          totalSessions: number
+          totalAmount: number
+        }[]
+        pagination: {
+          total: number
+          page: number
+          limit: number
+        }
+      }>>({
+        url: `/lessons/${lessonId}/attendance-records`,
+        method: 'GET',
+        params
+      })
+    },
+
+    // 修改签到记录
+    updateAttendanceRecord(batchId: string, data: {
+      sessions: number
+      remark?: string
+    }) {
+      return request<ApiResponse<{
+        records: any[]
+        message: string
+      }>>({
+        url: `/lessons/attendance-records/${batchId}`,
+        method: 'PUT',
+        data
+      })
+    },
   },
 
   // 订单管理

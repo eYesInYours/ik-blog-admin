@@ -344,18 +344,15 @@ const handleSubmitAttendance = async () => {
 const handleConfirmAttendance = async () => {
   try {
     loading.value = true
-
-    // 为每个学员创建签到记录
-    await Promise.all(selectedAttendanceStudents.value.map(student => 
-      studentApi.attendance({
-        studentId: student._id,
-        lessonId: currentLesson.value._id,
-        sessions: attendanceForm.value.sessions,
-        attendanceTime: attendanceForm.value.attendanceTime,
-        remark: attendanceForm.value.remark.trim() || undefined
-      })
-    ))
-
+  
+    // 使用批量签到接口
+    await lessonApi.lesson.batchAttendance(currentLesson.value._id, {
+      studentIds: selectedAttendanceStudents.value.map(s => s._id),
+      sessions: attendanceForm.value.sessions,
+      attendanceTime: attendanceForm.value.attendanceTime,
+      remark: attendanceForm.value.remark.trim() || undefined
+    })
+  
     ElMessage.success('签到成功')
     attendanceConfirmVisible.value = false
     attendanceDialogVisible.value = false
@@ -479,6 +476,101 @@ const handleQuitLesson = async (student: Student) => {
 
 const attendanceConfirmVisible = ref(false)
 
+// 签到记录相关
+const attendanceRecordsVisible = ref(false)
+const attendanceRecords = ref<any[]>([])
+const attendanceRecordsTotal = ref(0)
+const attendanceRecordsQuery = ref({
+  page: 1,
+  limit: 10
+})
+const attendanceRecordsLoading = ref(false)
+
+// 获取签到记录
+const getAttendanceRecords = async () => {
+  try {
+    attendanceRecordsLoading.value = true
+    const { data } = await lessonApi.lesson.getAttendanceRecords(
+      currentLesson.value._id,
+      attendanceRecordsQuery.value
+    )
+    attendanceRecords.value = data.records
+    attendanceRecordsTotal.value = data.pagination.total
+  } catch (error) {
+    console.error('获取签到记录失败:', error)
+    ElMessage.error('获取签到记录失败')
+  } finally {
+    attendanceRecordsLoading.value = false
+  }
+}
+
+// 查看签到记录
+const handleViewRecords = (lesson: Lesson) => {
+  currentLesson.value = lesson
+  attendanceRecordsVisible.value = true
+  getAttendanceRecords()
+}
+
+// 修改记录相关
+const editRecordDialogVisible = ref(false)
+const editRecordForm = ref({
+  batchId: '',
+  sessions: 0,
+  remark: '',
+  originalSessions: 0,
+  calculatedAmount: 0,
+  originalAmount: 0,
+  lessonName: '',
+  lessonPrice: 0,
+  modifyHistory: []
+})
+const editRecordLoading = ref(false)
+
+// 打开修改记录对话框
+const handleEditRecord = (record: any) => {
+  const originalSessions = Math.abs(record.students[0].sessions)
+  const originalAmount = originalSessions * currentLesson.value.price
+  const newAmount = originalSessions * currentLesson.value.price
+
+  editRecordForm.value = {
+    batchId: record.batchId,
+    sessions: originalSessions,
+    remark: record.remark,
+    originalSessions,
+    calculatedAmount: record.totalAmount,
+    originalAmount,
+    lessonName: currentLesson.value.name,
+    lessonPrice: currentLesson.value.price,
+    modifyHistory: record.modifyHistory || []
+  }
+  editRecordDialogVisible.value = true
+}
+
+// 计算修改后的金额
+const calculateModifiedAmount = computed(() => {
+  if (!editRecordForm.value.sessions || !editRecordForm.value.lessonPrice) return 0
+  return editRecordForm.value.lessonPrice * editRecordForm.value.sessions
+})
+
+// 提交修改
+const handleEditRecordSubmit = async () => {
+  try {
+    editRecordLoading.value = true
+    await lessonApi.lesson.updateAttendanceRecord(editRecordForm.value.batchId, {
+      sessions: editRecordForm.value.sessions,
+      remark: editRecordForm.value.remark?.trim()
+    })
+    ElMessage.success('修改成功')
+    editRecordDialogVisible.value = false
+    getAttendanceRecords() // 刷新记录列表
+  } catch (error) {
+    console.error('修改记录失败:', error)
+    ElMessage.error('修改记录失败')
+  } finally {
+    editRecordLoading.value = false
+  }
+}
+
 onMounted(() => {
   getLessons()
 })
@@ -489,7 +581,7 @@ onMounted(() => {
     <!-- 搜索工具栏 -->
     <el-card class="search-wrapper">
       <el-form :inline="true" :model="queryParams">
-        <el-form-item>
+        <el-form-item label="课程名称">
           <el-input
             v-model="queryParams.keyword"
             placeholder="搜索课程名称"
@@ -504,7 +596,7 @@ onMounted(() => {
             </template>
           </el-input>
         </el-form-item>
-        <el-form-item>
+        <el-form-item label="课程类型">
           <el-select v-model="queryParams.type" placeholder="课程类型" clearable @change="getLessons" style="width: 160px">
             <el-option
               v-for="option in typeOptions"
@@ -514,7 +606,7 @@ onMounted(() => {
             />
           </el-select>
         </el-form-item>
-        <el-form-item>
+        <el-form-item label="课程阶段">
           <el-select v-model="queryParams.stage" placeholder="课程阶段" clearable @change="getLessons" style="width: 160px">
             <el-option
               v-for="option in stageOptions"
@@ -594,23 +686,44 @@ onMounted(() => {
             {{ formatDateTime(row.createdAt) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="280" fixed="right">
           <template #default="{ row }">
-            <el-button
-              type="success"
-              size="small"
-              @click="handleAttendance(row)"
-            >
-              签到
-            </el-button>
-            <el-button type="primary" size="small" @click="handleEdit(row)">
-              编辑
-            </el-button>
-            <el-popconfirm title="确定要删除吗？" @confirm="handleDelete(row._id)">
-              <template #reference>
-                <el-button type="danger" size="small">删除</el-button>
-              </template>
-            </el-popconfirm>
+            <div class="operation-buttons">
+              <el-button
+                type="primary"
+                size="small"
+                @click="handleAttendance(row)"
+              >
+                签到
+              </el-button>
+              <el-button
+                type="warning"
+                size="small"
+                @click="handleViewRecords(row)"
+              >
+                记录
+              </el-button>
+              <el-button 
+                type="primary" 
+                size="small"
+                @click="handleEdit(row)"
+              >
+                编辑
+              </el-button>
+              <el-popconfirm 
+                title="确定要删除吗？" 
+                @confirm="handleDelete(row._id)"
+              >
+                <template #reference>
+                  <el-button 
+                    type="danger" 
+                    size="small"
+                  >
+                    删除
+                  </el-button>
+                </template>
+              </el-popconfirm>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -953,6 +1066,175 @@ onMounted(() => {
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 签到记录对话框 -->
+    <el-dialog
+      v-model="attendanceRecordsVisible"
+      :title="`${currentLesson?.name} - 签到记录`"
+      width="800px"
+    >
+      <el-table
+        v-loading="attendanceRecordsLoading"
+        :data="attendanceRecords"
+        style="width: 100%"
+      >
+        <el-table-column prop="recordTime" label="签到时间" width="180">
+          <template #default="{ row }">
+            {{ dayjs(row.recordTime).format('YYYY-MM-DD HH:mm:ss') }}
+          </template>
+        </el-table-column>
+        <el-table-column label="签到学员" min-width="300">
+          <template #default="{ row }">
+            <div class="students-info">
+              <div class="info-header">
+                <span class="student-count">
+                  <span class="count">{{ row.students.length }}</span>人
+                  <span class="text-muted">签到</span>
+                </span>
+              </div>
+              <el-button
+                type="primary"
+                link
+                size="small"
+                @click="() => row.showDetails = !row.showDetails"
+              >
+                <el-icon class="mr-1">
+                  <component :is="row.showDetails ? 'ArrowUp' : 'ArrowDown'" />
+                </el-icon>
+                {{ row.showDetails ? '收起' : '展开' }}
+              </el-button>
+              <div v-if="row.showDetails" class="students-details">
+                <el-tag
+                  v-for="student in row.students"
+                  :key="student._id"
+                  size="small"
+                  class="mb-1 mr-1"
+                  effect="plain"
+                >
+                  {{ student.name }}
+                </el-tag>
+              </div>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="每人耗费" width="180">
+          <template #default="{ row }">
+            <div>课时：{{ Math.abs(row.students?.[0]?.sessions) }}节</div>
+            <div class="text-price">课单价：¥{{ Math.abs(row.students?.[0]?.amount / row.students?.[0]?.sessions) }}</div>
+            <div class="text-price">金额：¥{{ Math.abs(row.students?.[0]?.amount) }}</div>
+          </template>
+        </el-table-column>
+        <el-table-column prop="recordTime" label="备注" min-width="200">
+          <template #default="{ row }">
+            {{ row.remark || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="120" fixed="right">
+          <template #default="{ row }">
+            <el-button
+              type="primary"
+              size="small"
+              @click="handleEditRecord(row)"
+            >
+              修改
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <div class="pagination-container">
+        <el-pagination
+          v-model:current-page="attendanceRecordsQuery.page"
+          v-model:page-size="attendanceRecordsQuery.limit"
+          :total="attendanceRecordsTotal"
+          @current-change="getAttendanceRecords"
+          @size-change="getAttendanceRecords"
+        />
+      </div>
+    </el-dialog>
+
+    <!-- 修改记录对话框 -->
+    <el-dialog
+      v-model="editRecordDialogVisible"
+      title="修改签到记录"
+      width="500px"
+    >
+      <!-- 课程信息 -->
+      <div class="course-info">
+        <div class="info-item">
+          <span class="label">课程：</span>
+          <span class="value">{{ editRecordForm.lessonName }}</span>
+        </div>
+        <div class="info-item">
+          <span class="label">单课时价格：</span>
+          <span class="value price">¥{{ editRecordForm.lessonPrice }}</span>
+        </div>
+      </div>
+
+      <el-form :model="editRecordForm" label-width="100px">
+        <el-form-item label="签到课时">
+          <el-input-number
+            v-model="editRecordForm.sessions"
+            :min="1"
+            :precision="0"
+          />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input
+            v-model="editRecordForm.remark"
+            type="textarea"
+            :rows="2"
+          />
+        </el-form-item>
+        
+        <!-- 显示金额变化 -->
+        <div v-if="editRecordForm.sessions !== editRecordForm.originalSessions" class="amount-preview">
+          <div class="amount-change">
+            <div>（每人）原扣费金额: ¥{{ editRecordForm.originalAmount }}</div>
+            <el-icon><ArrowRight /></el-icon>
+            <div>（每人）新扣费金额: ¥{{ calculateModifiedAmount }}</div>
+          </div>
+          <div class="diff-amount" :class="calculateModifiedAmount > editRecordForm.originalAmount ? 'positive' : 'negative'">
+            {{ calculateModifiedAmount > editRecordForm.originalAmount ? '多扣' : '少扣' }}
+            ¥{{ Math.abs(calculateModifiedAmount - editRecordForm.originalAmount) }}
+          </div>
+        </div>
+        
+        <!-- 显示修改历史 -->
+        <div v-if="editRecordForm.modifyHistory?.length" class="modify-history">
+          <div class="history-title">修改历史</div>
+          <el-timeline>
+            <el-timeline-item
+              v-for="(history, index) in editRecordForm.modifyHistory"
+              :key="index"
+              :timestamp="dayjs(history.modifiedAt).format('YYYY-MM-DD HH:mm:ss')"
+            >
+              <div class="history-item">
+                <div class="history-changes">
+                  <div>
+                    课时: {{ Math.abs(history.before.sessions) }} -> {{ Math.abs(history.after.sessions) }}节
+                  </div>
+                  <div>
+                    金额: ¥{{ Math.abs(history.before.amount) }} -> ¥{{ Math.abs(history.after.amount) }}
+                  </div>
+                </div>
+              </div>
+            </el-timeline-item>
+          </el-timeline>
+        </div>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="editRecordDialogVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="editRecordLoading"
+          @click="handleEditRecordSubmit"
+        >
+          确定
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -1134,6 +1416,211 @@ onMounted(() => {
         .text-danger {
           color: var(--el-color-danger);
         }
+      }
+    }
+  }
+}
+
+.pagination-container {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.students-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  
+  .info-header {
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
+    min-width: 80px;
+  }
+  
+  .student-count {
+    display: inline-flex;
+    align-items: center;
+    font-size: 14px;
+    color: var(--el-text-color-regular);
+    
+    .count {
+      font-size: 16px;
+      font-weight: 500;
+      color: var(--el-color-primary);
+      margin-right: 2px;
+    }
+  }
+  
+  .text-muted {
+    color: var(--el-text-color-secondary);
+    font-size: 14px;
+  }
+}
+
+.students-details {
+  margin-left: 16px;
+  margin-top: 8px;
+}
+
+.students-info {
+  .students-details {
+    margin-top: 8px;
+    padding: 8px;
+    background-color: #f5f7fa;
+    border-radius: 4px;
+  }
+  
+  .mb-1 {
+    margin-bottom: 4px;
+  }
+  
+  .mr-1 {
+    margin-right: 4px;
+  }
+}
+
+.operation-buttons {
+  display: flex;
+  gap: 4px;
+  flex-wrap: nowrap;
+  
+  .el-button {
+    padding: 6px 12px;
+    
+    &:hover {
+      color: white;
+    }
+    
+    &.el-button--success {
+      &:hover {
+        background-color: var(--el-color-success);
+        border-color: var(--el-color-success);
+      }
+    }
+    
+    &.el-button--info {
+      &:hover {
+        background-color: var(--el-color-info);
+        border-color: var(--el-color-info);
+      }
+    }
+    
+    &.el-button--primary {
+      &:hover {
+        background-color: var(--el-color-primary);
+        border-color: var(--el-color-primary);
+      }
+    }
+    
+    &.el-button--danger {
+      &:hover {
+        background-color: var(--el-color-danger);
+        border-color: var(--el-color-danger);
+      }
+    }
+  }
+}
+
+.amount-preview {
+  margin-top: 16px;
+  margin-bottom: 16px;
+  padding: 8px;
+  background-color: #f5f7fa;
+  border-radius: 4px;
+
+  .amount-change {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+
+    .arrow {
+      color: var(--el-text-color-secondary);
+    }
+
+    div {
+      color: var(--el-text-color-regular);
+    }
+  }
+
+  .diff-amount {
+    font-size: 13px;
+    
+    &.positive {
+      color: var(--el-color-success);
+    }
+    
+    &.negative {
+      color: var(--el-color-danger);
+    }
+  }
+}
+
+.modify-history {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--el-border-color-lighter);
+
+  .history-title {
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 8px;
+    color: var(--el-text-color-regular);
+  }
+
+  .history-item {
+    font-size: 13px;
+    color: var(--el-text-color-regular);
+
+    .history-changes {
+      >div {
+        line-height: 1.8;
+      }
+    }
+  }
+
+  :deep(.el-timeline-item__timestamp) {
+    font-size: 12px;
+    color: var(--el-text-color-secondary);
+  }
+
+  :deep(.el-timeline-item__node) {
+    background-color: var(--el-color-primary-light-7);
+  }
+
+  :deep(.el-timeline-item__tail) {
+    border-left-color: var(--el-border-color-lighter);
+  }
+}
+
+.course-info {
+  background-color: var(--el-fill-color-light);
+  padding: 12px 16px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+
+  .info-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+
+    .label {
+      color: var(--el-text-color-secondary);
+      width: 100px;
+    }
+
+    .value {
+      color: var(--el-text-color-primary);
+      font-weight: 500;
+
+      &.price {
+        color: var(--el-color-danger);
       }
     }
   }
